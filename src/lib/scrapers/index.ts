@@ -4,7 +4,10 @@
  */
 import { bilibiliScraper } from "./bilibili";
 import { githubScraper } from "./github";
+import { googleNewsScraper } from "./google-news";
 import { hackernewsScraper } from "./hackernews";
+import { infoqScraper } from "./infoq";
+import { redditScraper } from "./reddit";
 import { twitterScraper } from "./twitter";
 import { weiboScraper } from "./weibo";
 import { zhihuScraper } from "./zhihu";
@@ -19,6 +22,9 @@ export const SCRAPERS: Record<Platform, Scraper> = {
   github: githubScraper,
   twitter: twitterScraper,
   hackernews: hackernewsScraper,
+  reddit: redditScraper,
+  googlenews: googleNewsScraper,
+  infoq: infoqScraper,
 };
 
 export const ALL_PLATFORMS: Platform[] = [
@@ -28,6 +34,9 @@ export const ALL_PLATFORMS: Platform[] = [
   "github",
   "twitter",
   "hackernews",
+  "reddit",
+  "googlenews",
+  "infoq",
 ];
 
 /**

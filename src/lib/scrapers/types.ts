@@ -8,7 +8,10 @@ export type Platform =
   | "bilibili"
   | "github"
   | "twitter"
-  | "hackernews";
+  | "hackernews"
+  | "reddit"
+  | "googlenews"
+  | "infoq";
 
 /**
  * 单条抓取到的原始热点条目（归一化后）

@@ -9,7 +9,10 @@ export type PlatformKey =
   | "bilibili"
   | "github"
   | "twitter"
-  | "hackernews";
+  | "hackernews"
+  | "reddit"
+  | "googlenews"
+  | "infoq";
 
 export interface PlatformMeta {
   label: string;
@@ -62,6 +65,27 @@ export const PLATFORM_META: Record<PlatformKey, PlatformMeta> = {
     bgColor: "rgba(255, 112, 67, 0.12)",
     metricLabel: "分数",
   },
+  reddit: {
+    label: "Reddit",
+    shortLabel: "RD",
+    color: "#ff4500",
+    bgColor: "rgba(255, 69, 0, 0.12)",
+    metricLabel: "Upvotes",
+  },
+  googlenews: {
+    label: "Google News",
+    shortLabel: "GN",
+    color: "#4285f4",
+    bgColor: "rgba(66, 133, 244, 0.12)",
+    metricLabel: "新闻",
+  },
+  infoq: {
+    label: "InfoQ",
+    shortLabel: "IQ",
+    color: "#00b0e8",
+    bgColor: "rgba(0, 176, 232, 0.12)",
+    metricLabel: "媒体",
+  },
 };
 
 export const ALL_PLATFORMS: PlatformKey[] = [
@@ -71,4 +95,7 @@ export const ALL_PLATFORMS: PlatformKey[] = [
   "github",
   "twitter",
   "hackernews",
+  "reddit",
+  "googlenews",
+  "infoq",
 ];
