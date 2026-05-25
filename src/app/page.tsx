@@ -533,6 +533,7 @@ export default function HomePage() {
                 return (
                   <HotItemCard
                     key={item.id}
+                    id={item.id}
                     title={item.title}
                     summary={item.summary}
                     score={effectiveScore}

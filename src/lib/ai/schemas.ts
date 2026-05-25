@@ -116,4 +116,6 @@ export interface AiEnrichedFields {
   score: number;
   trendVelocity: number;
   summary: string;
+  keyPoints: string[];
+  entities: string[];
 }

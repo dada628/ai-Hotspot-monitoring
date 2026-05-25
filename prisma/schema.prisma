@@ -86,6 +86,12 @@ model HotSpot {
   engagementScore Float  @default(0)
   /// 爆发速度（分/小时）
   trendVelocity Float?
+  /// AI 输出的 3-5 条关键要点（JSON array 字符串）
+  keyPoints     String   @default("[]")
+  /// AI 输出的关键实体（人物/机构/产品/地名，JSON array 字符串）
+  entities      String   @default("[]")
+  /// AI Pipeline 最近一次处理时间，便于详情页展示"已 AI 增强"标记
+  processedAt   DateTime?
   /// active | archived
   status        String   @default("active")
   firstSeenAt   DateTime @default(now())

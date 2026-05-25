@@ -1,6 +1,8 @@
 "use client";
 
 import { useRef } from "react";
+import Link from "next/link";
+import type { Route } from "next";
 import { Badge } from "./Badge";
 import { BorderBeam } from "./aceternity/BorderBeam";
 import { PLATFORM_META, type PlatformKey } from "@/lib/platforms";
@@ -13,6 +15,8 @@ interface SourceLite {
 }
 
 export interface HotItemProps {
+  /** HotSpot.id —— 用于跳详情页 */
+  id?: string;
   title: string;
   summary?: string | null;
   score?: number;
@@ -57,6 +61,7 @@ function timeAgo(date: string | Date): string {
 }
 
 export function HotItemCard({
+  id,
   title,
   summary,
   score,
@@ -76,9 +81,9 @@ export function HotItemCard({
   const cred = CRED_META[credibility];
   const ref = reference ? REF_META[reference] : null;
   const isCritical = severity === "critical";
-  const rootRef = useRef<HTMLAnchorElement | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLAnchorElement>) => {
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const el = rootRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
@@ -91,12 +96,12 @@ export function HotItemCard({
     if (el) el.style.setProperty("--spot-opacity", "0");
   };
 
+  // 整张卡片优先点击跳详情页（如果有 id），右下角小链接跳外链原文
+  // 注意：typedRoutes 严格模式下不能把模板字符串赋给变量再传 Link，必须直接传
+
   return (
-    <a
+    <div
       ref={rootRef}
-      href={primary?.url}
-      target="_blank"
-      rel="noopener noreferrer"
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
       style={
@@ -150,10 +155,21 @@ export function HotItemCard({
         )}
       </div>
 
-      {/* 标题 */}
-      <h3 className="text-base font-medium text-white group-hover:text-[var(--color-cyan-bright)] transition-colors leading-snug line-clamp-2">
-        {title}
-      </h3>
+      {/* 标题 —— 有 id 时跳详情页，无 id 时纯文本 */}
+      {id ? (
+        <Link
+          href={`/hotspot/${id}` as Route}
+          className="block group/title"
+        >
+          <h3 className="text-base font-medium text-white group-hover/title:text-[var(--color-cyan-bright)] transition-colors leading-snug line-clamp-2">
+            {title}
+          </h3>
+        </Link>
+      ) : (
+        <h3 className="text-base font-medium text-white leading-snug line-clamp-2">
+          {title}
+        </h3>
+      )}
 
       {/* 摘要 */}
       {summary && (
@@ -162,9 +178,9 @@ export function HotItemCard({
         </p>
       )}
 
-      {/* 底部：metric + 时间 */}
+      {/* 底部：metric + 时间 + 原文链接 */}
       <div className="mt-3.5 flex items-center justify-between gap-3 text-xs text-[var(--color-text-muted)]">
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap min-w-0">
           {primary?.metric && (
             <span className="inline-flex items-center gap-1 text-[var(--color-text-dim)]">
               {platformMeta?.metricLabel ?? "热度"} · {primary.metric}
@@ -182,9 +198,23 @@ export function HotItemCard({
             </span>
           ))}
         </div>
-        <span className="shrink-0 tabular-nums">{timeAgo(updatedAt)}</span>
+        <div className="flex items-center gap-3 shrink-0">
+          {primary?.url && (
+            <a
+              href={primary.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1 text-[var(--color-text-muted)] hover:text-[#00e5ff] transition-colors"
+              title="在新标签打开原文"
+            >
+              原文 <ArrowUpRightIcon />
+            </a>
+          )}
+          <span className="tabular-nums">{timeAgo(updatedAt)}</span>
+        </div>
       </div>
-    </a>
+    </div>
   );
 }
 
@@ -255,6 +285,19 @@ function FlameMiniIcon() {
   return (
     <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
       <path d="M12 2C12 2 9 6 9 10C9 12.5 10.5 14 12 14C13.5 14 15 12.5 15 10C15 8.5 14 7 14 7C14 7 15.5 8 16.5 10C17.5 12 17.5 14 17.5 14C17.5 18 14.5 22 12 22C9.5 22 6.5 18 6.5 14C6.5 8 12 2 12 2Z" />
+    </svg>
+  );
+}
+function ArrowUpRightIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M7 17L17 7M17 7H9M17 7V15"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

@@ -154,6 +154,87 @@ async function testPages() {
         fail(g, `GET ${p}`, (e as Error).message);
       }
     }
+
+    // 详情页（需要有一条 HotSpot 才能测真实路径）
+    const any = await db.hotSpot.findFirst({ where: { status: "active" } });
+    if (any) {
+      try {
+        const r = await fetch(`${BASE}/hotspot/${any.id}`);
+        r.status === 200
+          ? pass(g, `GET /hotspot/[id]`, `${any.id.slice(0, 10)}... 200`)
+          : fail(g, `GET /hotspot/[id]`, `${r.status}`);
+      } catch (e) {
+        fail(g, `GET /hotspot/[id]`, (e as Error).message);
+      }
+    }
+  });
+}
+
+async function testHotSpotDetailApi() {
+  await group("API · /api/hotspots/[id] 单条详情", async () => {
+    const g = "HotSpot Detail";
+
+    // 找一条 active HotSpot
+    const sample = await db.hotSpot.findFirst({
+      where: { status: "active" },
+      include: { sources: true },
+    });
+    if (!sample) {
+      fail(g, "找一条 HotSpot 当样本", "DB 没有 active HotSpot");
+      return;
+    }
+
+    // 1) 正常 GET
+    const r = await fetch(`${BASE}/api/hotspots/${sample.id}`);
+    if (r.status !== 200) {
+      fail(g, `GET 正常 id`, `${r.status}`);
+      return;
+    }
+    const data = await r.json();
+    const expected = [
+      "id",
+      "title",
+      "summary",
+      "category",
+      "tags",
+      "score",
+      "engagementScore",
+      "trendVelocity",
+      "keyPoints",
+      "entities",
+      "processedAt",
+      "firstSeenAt",
+      "updatedAt",
+      "sources",
+    ];
+    const missing = expected.filter((k) => !(k in data));
+    missing.length === 0
+      ? pass(
+          g,
+          "GET 单条返回完整字段",
+          `${expected.length} 字段全有 · sources=${data.sources.length}`,
+        )
+      : fail(g, "GET 单条返回完整字段", `缺: ${missing.join(",")}`);
+
+    // 2) tags / keyPoints / entities 都是合法 JSON
+    let jsonOk = true;
+    for (const k of ["tags", "keyPoints", "entities"]) {
+      try {
+        const arr = JSON.parse(data[k] as string);
+        if (!Array.isArray(arr)) jsonOk = false;
+      } catch {
+        jsonOk = false;
+      }
+    }
+    jsonOk
+      ? pass(g, "tags/keyPoints/entities 都是 JSON 数组", "OK")
+      : fail(g, "JSON 字段解析", "存在非合法 JSON 或非数组");
+
+    // 3) 不存在的 id → 404
+    const bad = await fetch(`${BASE}/api/hotspots/no-such-id-zzz-12345`);
+    bad.status === 404
+      ? pass(g, "不存在 id 应 404", "404 ✓")
+      : fail(g, "不存在 id 应 404", `实际 ${bad.status}`);
   });
 }
 
@@ -663,6 +744,7 @@ async function main() {
   await testDatabaseIntegrity();
   await testAiPipelineStatic();
   await testProcessApiRouting();
+  await testHotSpotDetailApi();
   await testAiPipelineIntegration();
 
   // 汇总

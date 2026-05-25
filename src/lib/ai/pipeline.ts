@@ -91,6 +91,9 @@ export async function processBatch(
           summary: enriched.summary,
           score: enriched.score,
           trendVelocity: enriched.trendVelocity,
+          keyPoints: JSON.stringify(enriched.keyPoints),
+          entities: JSON.stringify(enriched.entities),
+          processedAt: new Date(),
         },
       });
 
@@ -216,6 +219,8 @@ async function processOne(
     category: classifyResult.category as Category,
     tags: classifyResult.tags,
     summary: summaryResult.summary,
+    keyPoints: summaryResult.keyPoints,
+    entities: summaryResult.entities,
     score: scoreResult.score,
     trendVelocity: scoreResult.trendVelocity,
   };
