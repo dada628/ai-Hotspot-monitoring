@@ -1,0 +1,61 @@
+---
+description: 每次完成一个任务/小阶段的代码改动后，必须 commit 并 push 到 GitHub
+alwaysApply: true
+---
+
+# Git 自动提交并推送规则
+
+## 触发时机
+
+每当完成一个**完整任务或小阶段**的代码改动（例如：一个 bug 修复、一个组件实现、一次重构小节、一组关联文件的修改）后，**必须**走完以下流程，不要堆积多个任务再一起提交。
+
+不要为"只新增一行注释"这种纯文档微调单独提交；但只要涉及实际逻辑/UI/配置改动，就走流程。
+
+## 执行流程（每一步都要先报告再执行）
+
+1. **报告改动摘要**：列出本次改动的文件、改了什么、为什么改。
+2. **运行检查**：先跑 `git status` 和 `git diff` 查看实际改动；如果项目能跑，建议先 `npm run type-check` 或对应测试。
+3. **用 AskQuestion 让用户确认 commit**：把准备好的 commit message 给用户看，**必须用 AskQuestion 工具呈现选择题**（例如：确认提交 / 修改 message / 取消），不要只用纯文字让用户回复。
+4. **执行 commit**：使用 HEREDOC 形式确保中文/多行 message 正确。
+5. **用 AskQuestion 让用户确认 push**：commit 完成后**再次**用选择题询问是否 push（例如：确认推送 / 暂缓 / 推送到不同分支）。
+6. **执行 push**：`git push origin <current-branch>`。
+7. **报告结果**：贴出 `git status` 和远程链接（如有）。
+
+## 交互方式（重要）
+
+- **凡是需要用户做决定/确认的地方，一律使用 AskQuestion 工具呈现选择题**，不要写"请回复 OK/确认"这类纯文字。
+- 这条规则同样适用于：选择 commit message 风格、是否跳过测试、是否合并多次改动一起提交、是否新建分支等。
+
+## Commit Message 风格（AI 自行判断）
+
+- 小修小补 / 配置 / 文档 → 中文短句即可：`修复知乎抓取的 401 兜底`
+- 功能性改动 → Conventional Commits + 中文描述：`feat: 接入 OpenRouter 客户端封装`
+- 多文件/混合改动 → 标题 + 空行 + 正文列表
+
+## 硬约束
+
+- **绝不**修改 `git config`
+- **绝不**使用 `--force` / `--no-verify` / `push --force`，除非用户明确要求
+- **绝不**提交敏感文件（`.env`、`*.key`、`credentials*`、`dev.db`）—— 已被 `.gitignore` 排除的不要 `git add -f` 强加
+- **绝不**对已 push 的 commit 使用 `--amend`
+- 如果 pre-commit hook 修改了文件 → 创建**新** commit，不要 amend
+
+## PowerShell 适配（本机环境）
+
+- 不支持 `&&` 链式 → 用 `;` 或拆成多次 Shell 调用
+- commit message 用 HEREDOC：
+
+```bash
+git commit -m "$(cat <<'EOF'
+feat: 新增 AI 分类链路
+
+- 新增 src/lib/ai/prompts/classify.ts
+- 接入 deepseek-v3.2 默认模型
+EOF
+)"
+```
+
+## 例外
+
+- 用户明确说"先别提交"/"等会一起提交" → 暂缓
+- 改动只在 `docs/HANDOVER.md` 等纯交接文档 → 仍按流程走，因为这些也是项目状态的一部分

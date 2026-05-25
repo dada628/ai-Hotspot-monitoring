@@ -1,0 +1,171 @@
+// =================================================================
+// AI 热点监控系统 · Prisma Schema
+// 关于设计：详见 docs/DESIGN.md § 5
+// =================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// =====================================================
+// Auth.js v5 标准表
+// =====================================================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id             String         @id @default(cuid())
+  email          String         @unique
+  emailVerified  DateTime?
+  passwordHash   String?
+  name           String?
+  image          String?
+  /// 用户偏好的 OpenRouter 模型 ID（默认走国内可访问的 DeepSeek，避免海外模型区域限制）
+  preferredModel String         @default("deepseek/deepseek-v3.2")
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  accounts       Account[]
+  sessions       Session[]
+  subscriptions  Subscription[]
+  alerts         Alert[]
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// =====================================================
+// 业务表
+// =====================================================
+
+/// 热点（AI 处理后的合并条目）
+model HotSpot {
+  id            String   @id @default(cuid())
+  title         String
+  summary       String?
+  /// tech | society | entertainment | finance | sports | culture | science | other
+  category      String?
+  /// JSON array 序列化
+  tags          String   @default("[]")
+  /// 0-100 综合热度评分
+  score         Float    @default(0)
+  /// 爆发速度（分/小时）
+  trendVelocity Float?
+  /// active | archived
+  status        String   @default("active")
+  firstSeenAt   DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sources HotSpotSource[]
+  alerts  Alert[]
+
+  @@index([score])
+  @@index([category])
+  @@index([firstSeenAt])
+  @@index([status])
+}
+
+/// 单条原始数据来源（一个热点可能有多个源）
+model HotSpotSource {
+  id        String   @id @default(cuid())
+  hotSpotId String
+  /// weibo | zhihu | bilibili | github
+  platform  String
+  url       String
+  rawTitle  String
+  /// JSON 序列化：{ likes, comments, shares, stars, ... }
+  metric    String   @default("{}")
+  fetchedAt DateTime @default(now())
+
+  hotSpot HotSpot @relation(fields: [hotSpotId], references: [id], onDelete: Cascade)
+
+  @@unique([platform, url])
+  @@index([platform])
+  @@index([hotSpotId])
+}
+
+/// 用户的订阅规则
+model Subscription {
+  id         String   @id @default(cuid())
+  userId     String
+  /// 关键词（可空表示订阅整个分类/平台）
+  keyword    String?
+  /// JSON array：限定平台 ["weibo", "zhihu"]，空数组表示全部
+  platforms  String   @default("[]")
+  /// JSON array：限定分类 ["tech"], 空表示全部
+  categories String   @default("[]")
+  /// 最低评分阈值
+  minScore   Float    @default(70)
+  enabled    Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([enabled])
+}
+
+/// 预警记录
+model Alert {
+  id        String   @id @default(cuid())
+  userId    String
+  hotSpotId String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hotSpot HotSpot @relation(fields: [hotSpotId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, hotSpotId])
+  @@index([userId, read])
+  @@index([createdAt])
+}
+
+/// 抓取任务日志（用于监控与排错）
+model IngestLog {
+  id          String   @id @default(cuid())
+  platform    String
+  /// success | failed | partial
+  status      String
+  itemsCount  Int      @default(0)
+  errorMsg    String?
+  durationMs  Int?
+  startedAt   DateTime @default(now())
+
+  @@index([platform])
+  @@index([startedAt])
+}
