@@ -17,7 +17,9 @@
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
+    "@openrouter/ai-sdk-provider": "^2.9.0",
     "@prisma/client": "^6.19.3",
+    "ai": "^6.0.191",
     "bcryptjs": "^2.4.3",
     "motion": "^12.40.0",
     "next": "^16.2.6",
@@ -25,7 +27,7 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "rss-parser": "^3.13.0",
-    "zod": "^3.23.8",
+    "zod": "^3.25.76",
     "zustand": "^5.0.2"
   },
   "devDependencies": {

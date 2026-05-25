@@ -54,3 +54,4 @@ next-env.d.ts
 # 本地调试脚本（不进 git；按用户要求保留本地用）
 /scripts/debug-stats.ts
 /scripts/debug-scan.ts
+/scripts/debug-ai-smoke.ts
