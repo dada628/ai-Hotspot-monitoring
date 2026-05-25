@@ -10,6 +10,7 @@
  */
 import { db } from "@/lib/db";
 import { runAll, type Platform, type ScrapeResult } from "@/lib/scrapers";
+import { calcEngagementScore } from "@/lib/score";
 
 export interface IngestSummary {
   startedAt: Date;
@@ -32,7 +33,12 @@ async function persistResult(r: ScrapeResult) {
 
   for (const item of r.items) {
     const metricStr = JSON.stringify(item.metric ?? {});
-    // 检查是否已存在
+    const engagement = calcEngagementScore(
+      item.platform,
+      item.metric ?? {},
+      item.fetchedAt,
+    );
+
     const existing = await db.hotSpotSource.findUnique({
       where: {
         platform_url: { platform: item.platform, url: item.url },
@@ -49,18 +55,36 @@ async function persistResult(r: ScrapeResult) {
           fetchedAt: item.fetchedAt,
         },
       });
-      // 更新 HotSpot 的 updatedAt
+      // 重新计算该 HotSpot 的 engagementScore（取所有 source 的最高分）
+      const allSources = await db.hotSpotSource.findMany({
+        where: { hotSpotId: existing.hotSpotId },
+        select: { platform: true, metric: true, fetchedAt: true },
+      });
+      let maxScore = 0;
+      for (const s of allSources) {
+        let m: Record<string, unknown> = {};
+        try {
+          m = JSON.parse(s.metric || "{}");
+        } catch {
+          m = {};
+        }
+        const sc = calcEngagementScore(s.platform, m, s.fetchedAt);
+        if (sc > maxScore) maxScore = sc;
+      }
       await db.hotSpot.update({
         where: { id: existing.hotSpotId },
-        data: { updatedAt: new Date() },
+        data: {
+          updatedAt: new Date(),
+          engagementScore: maxScore,
+        },
       });
       updated += 1;
     } else {
-      // 新建 HotSpot + HotSpotSource
-      // Phase 3 AI 会负责合并、打分、分类、摘要
+      // 新建 HotSpot + HotSpotSource（AI Pipeline 上线后会接管合并/打分）
       await db.hotSpot.create({
         data: {
           title: item.title,
+          engagementScore: engagement,
           sources: {
             create: {
               platform: item.platform,

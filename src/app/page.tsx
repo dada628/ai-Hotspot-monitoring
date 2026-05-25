@@ -23,6 +23,7 @@ interface Hotspot {
   title: string;
   summary: string | null;
   score: number;
+  engagementScore: number;
   category: string | null;
   tags: string;
   firstSeenAt: string;
@@ -440,14 +441,15 @@ export default function HomePage() {
             <div className="grid gap-3">
               {items.map((item) => {
                 const tags = parseTags(item.tags);
-                const sev = scoreToSeverity(item.score);
-                const hotness = computeHotness(item.sources, item.score);
+                const effectiveScore = item.score > 0 ? item.score : item.engagementScore;
+                const sev = scoreToSeverity(effectiveScore);
+                const hotness = computeHotness(item.sources, effectiveScore);
                 return (
                   <HotItemCard
                     key={item.id}
                     title={item.title}
                     summary={item.summary}
-                    score={item.score}
+                    score={effectiveScore}
                     category={item.category}
                     tags={tags}
                     updatedAt={item.updatedAt}

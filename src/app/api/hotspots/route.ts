@@ -59,14 +59,15 @@ export async function GET(req: Request) {
     else if (severity === "low") where.score = { lt: 40 };
   }
 
-  const orderBy: Prisma.HotSpotOrderByWithRelationInput =
+  // 热度类排序：score 优先，engagementScore 兜底（score=0 时退化到本地评分）
+  const orderBy: Prisma.HotSpotOrderByWithRelationInput[] =
     sort === "newest_seen"
-      ? { firstSeenAt: "desc" }
+      ? [{ firstSeenAt: "desc" }]
       : sort === "newest_updated"
-        ? { updatedAt: "desc" }
+        ? [{ updatedAt: "desc" }]
         : sort === "importance" || sort === "hotness" || sort === "relevance"
-          ? { score: "desc" }
-          : { updatedAt: "desc" };
+          ? [{ score: "desc" }, { engagementScore: "desc" }, { updatedAt: "desc" }]
+          : [{ updatedAt: "desc" }];
 
   const items = await db.hotSpot.findMany({
     where,
@@ -92,6 +93,7 @@ export async function GET(req: Request) {
       title: h.title,
       summary: h.summary,
       score: h.score,
+      engagementScore: h.engagementScore,
       category: h.category,
       tags: h.tags,
       firstSeenAt: h.firstSeenAt.toISOString(),
