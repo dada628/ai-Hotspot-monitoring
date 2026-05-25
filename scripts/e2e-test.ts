@@ -19,6 +19,18 @@ import {
   getModelCard,
 } from "../src/lib/ai/models";
 import { ALL_PLATFORMS } from "../src/lib/scrapers";
+import {
+  ClassifySchema,
+  ScoreSchema,
+  SummarySchema,
+  CATEGORY_VALUES,
+} from "../src/lib/ai/schemas";
+import { classify } from "../src/lib/ai/prompts/classify";
+import { summarize } from "../src/lib/ai/prompts/summarize";
+import { score as scoreItem } from "../src/lib/ai/prompts/score";
+import { processBatch } from "../src/lib/ai/pipeline";
+import { runAlertMatch } from "../src/lib/ai/alert-match";
+import { hasOpenRouterKey } from "../src/lib/ai/openrouter";
 
 const BASE = "http://localhost:3000";
 const CRON_BEARER = "Bearer dev-cron-secret-please-replace-1234567890";
@@ -449,11 +461,196 @@ async function testCredentialsAuth() {
   });
 }
 
+async function testAiPipelineStatic() {
+  await group("AI Pipeline · 静态完整性", async () => {
+    const g = "AI Pipeline";
+
+    // 1) 三个 Zod schema 都能 parse 一个合法对象
+    const validClassify = ClassifySchema.safeParse({
+      category: "tech",
+      tags: ["AI", "OpenAI"],
+      confidence: 0.9,
+    });
+    validClassify.success
+      ? pass(g, "ClassifySchema 解析合法对象", "OK")
+      : fail(g, "ClassifySchema 解析合法对象", validClassify.error.message);
+
+    const validScore = ScoreSchema.safeParse({
+      score: 85,
+      reasoning: "重大事件",
+      trendVelocity: 90,
+    });
+    validScore.success
+      ? pass(g, "ScoreSchema 解析合法对象", "OK")
+      : fail(g, "ScoreSchema 解析合法对象", validScore.error.message);
+
+    const validSummary = SummarySchema.safeParse({
+      summary: "OpenAI 发布了 GPT-6 模型，参数规模提升 5 倍。",
+      keyPoints: ["GPT-6 发布", "参数 5x"],
+      entities: ["OpenAI", "GPT-6"],
+    });
+    validSummary.success
+      ? pass(g, "SummarySchema 解析合法对象", "OK")
+      : fail(g, "SummarySchema 解析合法对象", validSummary.error.message);
+
+    // 2) 非法 category 必须被拒绝
+    const badCategory = ClassifySchema.safeParse({
+      category: "天气",
+      tags: ["x"],
+      confidence: 0.5,
+    });
+    !badCategory.success
+      ? pass(g, "ClassifySchema 拒绝非枚举 category", "天气 → rejected")
+      : fail(g, "ClassifySchema 拒绝非枚举 category", "竟然通过了");
+
+    // 3) 分类枚举数量与文档一致（8 个）
+    CATEGORY_VALUES.length === 8
+      ? pass(g, "category 枚举数量", `${CATEGORY_VALUES.length} = 8 ✓`)
+      : fail(g, "category 枚举数量", `期望 8 实际 ${CATEGORY_VALUES.length}`);
+
+    // 4) 三个 prompt 包装函数都是 async function
+    const allFns = [classify, summarize, scoreItem];
+    const nonFn = allFns.find((f) => typeof f !== "function");
+    !nonFn
+      ? pass(g, "classify / summarize / score 都是 function", "")
+      : fail(g, "三个 prompt 函数", "存在非函数");
+
+    // 5) processBatch 和 runAlertMatch 都是 function
+    typeof processBatch === "function" && typeof runAlertMatch === "function"
+      ? pass(g, "processBatch / runAlertMatch 是 function", "")
+      : fail(g, "Pipeline / Alert 入口", "不是 function");
+  });
+}
+
+async function testProcessApiRouting() {
+  await group("API · /api/process 路由健康", async () => {
+    const g = "AI API";
+
+    // 1) 无 token → 401
+    const noAuth = await fetch(`${BASE}/api/process?limit=1`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    noAuth.status === 401
+      ? pass(g, "无 token 应 401", "401 ✓")
+      : fail(g, "无 token 应 401", `实际 ${noAuth.status}`);
+
+    // 2) 错误 token → 401
+    const badAuth = await fetch(`${BASE}/api/process?limit=1`, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer wrong-secret",
+        "Content-Type": "application/json",
+      },
+    });
+    badAuth.status === 401
+      ? pass(g, "错误 token 应 401", "401 ✓")
+      : fail(g, "错误 token 应 401", `实际 ${badAuth.status}`);
+
+    // 3) 非法 scope → 400
+    const badScope = await fetch(
+      `${BASE}/api/process?scope=bogus`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: CRON_BEARER,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+    badScope.status === 400
+      ? pass(g, "非法 scope 应 400", "400 ✓")
+      : fail(g, "非法 scope 应 400", `实际 ${badScope.status}`);
+
+    // 4) OPENROUTER_API_KEY 状态报告（非测试，只是信息）
+    hasOpenRouterKey()
+      ? pass(g, "OPENROUTER_API_KEY 已配置", "✓")
+      : pass(g, "OPENROUTER_API_KEY 未配置", "（跳过集成测试）");
+  });
+}
+
+/**
+ * 可选：真实跑一遍 AI Pipeline（消耗 token）
+ * 仅当环境变量 RUN_AI_TESTS=1 时执行
+ */
+async function testAiPipelineIntegration() {
+  if (process.env.RUN_AI_TESTS !== "1") {
+    console.log("\n▶ AI Pipeline · 真实集成（已跳过，设 RUN_AI_TESTS=1 启用）");
+    return;
+  }
+
+  await group("AI Pipeline · 真实集成（RUN_AI_TESTS=1）", async () => {
+    const g = "AI Integration";
+
+    if (!hasOpenRouterKey()) {
+      fail(g, "OPENROUTER_API_KEY 检查", "未配置，无法跑");
+      return;
+    }
+
+    // 找 1 条 score=0 的 HotSpot 跑一遍
+    const candidate = await db.hotSpot.findFirst({
+      where: { status: "active", score: 0 },
+      orderBy: { engagementScore: "desc" },
+    });
+    if (!candidate) {
+      pass(g, "无 score=0 的 HotSpot", "全部已 AI 处理过，跳过");
+      return;
+    }
+
+    const tStart = Date.now();
+    const res = await fetch(
+      `${BASE}/api/process?limit=1&scope=unprocessed`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: CRON_BEARER,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+    const dur = Date.now() - tStart;
+    if (!res.ok) {
+      fail(g, "POST /api/process", `HTTP ${res.status} (${dur}ms)`);
+      return;
+    }
+    const data = await res.json();
+    if (data?.ai?.succeeded >= 1) {
+      pass(
+        g,
+        "POST /api/process 实跑 1 条",
+        `succeeded=${data.ai.succeeded} ${dur}ms`,
+      );
+    } else {
+      fail(
+        g,
+        "POST /api/process 实跑 1 条",
+        `succeeded=${data?.ai?.succeeded} failed=${data?.ai?.failed}`,
+      );
+    }
+
+    // 校验 DB 真的写回了
+    const updated = await db.hotSpot.findUnique({ where: { id: candidate.id } });
+    if (updated && updated.score > 0 && updated.summary && updated.category) {
+      pass(
+        g,
+        "HotSpot 字段已写回",
+        `score=${updated.score} category=${updated.category} summary 长度 ${updated.summary.length}`,
+      );
+    } else {
+      fail(
+        g,
+        "HotSpot 字段未写回",
+        `score=${updated?.score} category=${updated?.category} summary=${updated?.summary?.slice(0, 30)}`,
+      );
+    }
+  });
+}
+
 // ============ Main ============
 
 async function main() {
   console.log("======================================");
-  console.log("  E2E Functional Test — HotPulse v0.2");
+  console.log("  E2E Functional Test — HotPulse v0.3");
   console.log("======================================");
 
   await testTypeAndCatalog();
@@ -464,6 +661,9 @@ async function main() {
   await testCredentialsAuth();
   await testScrapersIsolated();
   await testDatabaseIntegrity();
+  await testAiPipelineStatic();
+  await testProcessApiRouting();
+  await testAiPipelineIntegration();
 
   // 汇总
   console.log("\n======================================");

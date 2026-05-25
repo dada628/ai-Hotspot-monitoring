@@ -49,6 +49,19 @@ interface IngestSummary {
   }>;
 }
 
+interface AiProcessResponse {
+  ai: {
+    scanned: number;
+    succeeded: number;
+    failed: number;
+    totalDurationMs: number;
+  };
+  alerts: {
+    alertsCreated: number;
+    alertsSkipped: number;
+  };
+}
+
 const SORT_OPTIONS = [
   { id: "hotness", label: "热度综合", icon: <TrendingUpIcon /> },
   { id: "newest_seen", label: "最新发现", icon: <ClockMiniIcon /> },
@@ -98,6 +111,8 @@ export default function HomePage() {
   const [scanning, setScanning] = useState(false);
   const [scanReport, setScanReport] = useState<string | null>(null);
   const [lastScanAt, setLastScanAt] = useState<number | null>(null);
+  const [processing, setProcessing] = useState(false);
+  const [aiReport, setAiReport] = useState<string | null>(null);
 
   const [sort, setSort] = useState("hotness");
   const [platform, setPlatform] = useState("all");
@@ -162,6 +177,41 @@ export default function HomePage() {
     }
   };
 
+  const triggerAiProcess = async () => {
+    if (processing) return;
+    setProcessing(true);
+    setAiReport(null);
+    try {
+      const res = await fetch("/api/process?limit=20&scope=unprocessed", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer dev-cron-secret-please-replace-1234567890",
+        },
+      });
+      const data: AiProcessResponse = await res.json();
+      if (!res.ok) {
+        const errAny = data as unknown as { error?: string };
+        throw new Error(errAny?.error || `HTTP ${res.status}`);
+      }
+      const secs = (data.ai.totalDurationMs / 1000).toFixed(1);
+      setAiReport(
+        `AI 处理完成 · 成功 ${data.ai.succeeded}/${data.ai.scanned} 条` +
+          ` · 用时 ${secs}s` +
+          (data.alerts.alertsCreated > 0
+            ? ` · 触发预警 ${data.alerts.alertsCreated} 条`
+            : ""),
+      );
+      await loadAll();
+    } catch (err) {
+      setAiReport(
+        `AI 处理失败：${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const resetFilters = () => {
     setSort("hotness");
     setPlatform("all");
@@ -183,6 +233,7 @@ export default function HomePage() {
 
   const scanIsOk =
     scanReport && !scanReport.startsWith("扫描失败");
+  const aiIsOk = aiReport && !aiReport.startsWith("AI 处理失败");
 
   return (
     <main className="relative min-h-screen">
@@ -207,6 +258,27 @@ export default function HomePage() {
                   size={55}
                   colorFrom="#00e5ff"
                   colorTo="#a5e7ff"
+                  borderRadius={10}
+                />
+              )}
+            </div>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={triggerAiProcess}
+                disabled={processing}
+                className="relative btn btn-secondary"
+                title="对未 AI 处理的热点跑分类/摘要/评分"
+              >
+                <SparklesIcon spinning={processing} />
+                {processing ? "AI 处理中..." : "AI 处理"}
+              </button>
+              {processing && (
+                <BorderBeam
+                  duration={2.6}
+                  size={55}
+                  colorFrom="#a78bfa"
+                  colorTo="#67e8f9"
                   borderRadius={10}
                 />
               )}
@@ -291,6 +363,20 @@ export default function HomePage() {
           >
             {scanIsOk ? <CheckCircleIcon /> : <XCircleIcon />}
             <span>{scanReport}</span>
+          </div>
+        )}
+
+        {/* AI 处理结果 toast */}
+        {aiReport && (
+          <div
+            className={`glass-strong flex items-center gap-2 px-4 py-3 text-sm fade-in ${
+              aiIsOk
+                ? "text-[#67e8f9]"
+                : "text-[var(--color-danger-bright)]"
+            }`}
+          >
+            {aiIsOk ? <SparklesIcon /> : <XCircleIcon />}
+            <span>{aiReport}</span>
           </div>
         )}
 
@@ -833,6 +919,30 @@ function RefreshIcon({ spinning = false }: { spinning?: boolean }) {
         strokeWidth="1.8"
         strokeLinecap="round"
         strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+function SparklesIcon({ spinning = false }: { spinning?: boolean }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      className={spinning ? "animate-pulse" : ""}
+    >
+      <path
+        d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z"
+        fill="currentColor"
+      />
+      <path
+        d="M19 14L19.7 16.3L22 17L19.7 17.7L19 20L18.3 17.7L16 17L18.3 16.3L19 14Z"
+        fill="currentColor"
+      />
+      <path
+        d="M5 15L5.5 16.5L7 17L5.5 17.5L5 19L4.5 17.5L3 17L4.5 16.5L5 15Z"
+        fill="currentColor"
       />
     </svg>
   );
