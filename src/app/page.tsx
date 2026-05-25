@@ -7,6 +7,9 @@ import { Tabs } from "@/components/Tabs";
 import { StatCard } from "@/components/StatCard";
 import { PillSelect } from "@/components/PillSelect";
 import { HotItemCard } from "@/components/HotItemCard";
+import { Spotlight } from "@/components/aceternity/Spotlight";
+import { Sparkles } from "@/components/aceternity/Sparkles";
+import { BorderBeam } from "@/components/aceternity/BorderBeam";
 import { ALL_PLATFORMS, PLATFORM_META } from "@/lib/platforms";
 
 interface HotspotSource {
@@ -46,11 +49,11 @@ interface IngestSummary {
 }
 
 const SORT_OPTIONS = [
-  { id: "hotness", label: "热度综合", icon: "↗" },
-  { id: "newest_seen", label: "最新发现", icon: "🕒" },
-  { id: "newest_updated", label: "最新更新", icon: "🕓" },
-  { id: "importance", label: "重要程度", icon: "⚡" },
-  { id: "relevance", label: "相关性", icon: "◎" },
+  { id: "hotness", label: "热度综合", icon: <TrendingUpIcon /> },
+  { id: "newest_seen", label: "最新发现", icon: <ClockMiniIcon /> },
+  { id: "newest_updated", label: "最新更新", icon: <RefreshMiniIcon /> },
+  { id: "importance", label: "重要程度", icon: <BoltIcon /> },
+  { id: "relevance", label: "相关性", icon: <TargetIcon /> },
 ];
 
 const PLATFORM_OPTIONS = [
@@ -93,8 +96,8 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [scanReport, setScanReport] = useState<string | null>(null);
+  const [lastScanAt, setLastScanAt] = useState<number | null>(null);
 
-  // 筛选 / 排序状态
   const [sort, setSort] = useState("hotness");
   const [platform, setPlatform] = useState("all");
   const [severity, setSeverity] = useState("all");
@@ -144,10 +147,15 @@ export default function HomePage() {
       });
       const data: IngestSummary = await res.json();
       const totalNew = data.results.reduce((s, r) => s + (r.inserted ?? 0), 0);
-      setScanReport(`✓ 扫描完成 · 新增 ${totalNew} 条 · 用时 ${data.totalDurationMs}ms`);
+      setScanReport(
+        `扫描完成 · 新增 ${totalNew} 条 · 用时 ${data.totalDurationMs}ms`,
+      );
+      setLastScanAt(Date.now());
       await loadAll();
     } catch (err) {
-      setScanReport(`✗ 扫描失败：${err instanceof Error ? err.message : String(err)}`);
+      setScanReport(
+        `扫描失败：${err instanceof Error ? err.message : String(err)}`,
+      );
     } finally {
       setScanning(false);
     }
@@ -172,43 +180,116 @@ export default function HomePage() {
     return n;
   }, [platform, severity, cred, time, keyword]);
 
+  const scanIsOk =
+    scanReport && !scanReport.startsWith("扫描失败");
+
   return (
     <main className="relative min-h-screen">
       {/* 顶部导航 */}
-      <header className="sticky top-0 z-30 backdrop-blur-xl bg-[rgba(7,11,22,0.7)] border-b border-[var(--color-line)]">
+      <header className="sticky top-0 z-40 backdrop-blur-xl bg-[rgba(7,11,22,0.7)] border-b border-[var(--color-line)]">
         <div className="max-w-7xl mx-auto px-6 py-3.5 flex items-center justify-between">
           <Brand />
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={triggerScan}
-              disabled={scanning}
-              className="btn btn-primary"
+            <div className="relative">
+              <button
+                type="button"
+                onClick={triggerScan}
+                disabled={scanning}
+                className="relative btn btn-primary"
+              >
+                <RefreshIcon spinning={scanning} />
+                {scanning ? "扫描中..." : "立即扫描"}
+              </button>
+              {scanning && (
+                <BorderBeam
+                  duration={2.2}
+                  size={55}
+                  colorFrom="#00e5ff"
+                  colorTo="#a5e7ff"
+                  borderRadius={10}
+                />
+              )}
+            </div>
+            <Link
+              href="/admin/ingest"
+              className="btn btn-secondary"
+              aria-label="管理面板"
             >
-              <RefreshIcon spinning={scanning} />
-              {scanning ? "扫描中..." : "立即扫描"}
-            </button>
-            <Link href="/admin/ingest" className="btn btn-secondary" aria-label="管理面板">
               <SettingsIcon />
             </Link>
           </div>
         </div>
       </header>
 
+      {/* Hero · Spotlight + Sparkles */}
+      <section className="relative overflow-hidden border-b border-[var(--color-line)]">
+        <Spotlight />
+        <div className="absolute inset-0 pointer-events-none">
+          <Sparkles
+            particleColor="#a5e7ff"
+            particleDensity={6}
+            minSize={0.4}
+            maxSize={1.2}
+            speed={0.3}
+          />
+        </div>
+        <div className="relative max-w-7xl mx-auto px-6 py-12 lg:py-16">
+          <div className="flex items-start justify-between gap-6 flex-wrap">
+            <div className="flex-1 min-w-[280px]">
+              <div className="inline-flex items-center gap-2 mb-4 px-2.5 py-1 rounded-full border border-[rgba(0,229,255,0.25)] bg-[rgba(0,229,255,0.06)]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#00e5ff] live-dot" />
+                <span className="text-[11px] font-medium tracking-wide text-[#a5e7ff]">
+                  LIVE · 6 SOURCES
+                </span>
+              </div>
+              <h1 className="hero-title-gradient text-4xl md:text-5xl lg:text-6xl font-bold leading-[1.1] tracking-tight">
+                实时捕捉 AI 热点
+              </h1>
+              <p className="mt-4 text-sm md:text-base text-[var(--color-text-dim)] max-w-xl leading-relaxed">
+                扫描微博 · 知乎 · B站 · GitHub · Twitter · HackerNews 6 个平台 ·{" "}
+                <span className="text-[#67e8f9]">AI 智能分类去重</span> ·{" "}
+                <span className="text-[#60a5fa]">第一时间预警</span>
+              </p>
+            </div>
+
+            {/* 右侧：上次扫描信息 + 紧急计数 */}
+            <div className="flex flex-col gap-2 items-end shrink-0">
+              <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+                <ClockMiniIcon />
+                <span>
+                  上次扫描：
+                  {lastScanAt
+                    ? `${Math.round((Date.now() - lastScanAt) / 1000)}s 前`
+                    : "尚未扫描"}
+                </span>
+              </div>
+              {stats && stats.urgentCount > 0 && (
+                <div className="flex items-center gap-2 text-xs text-[var(--color-danger-bright)]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-danger-bright)] live-dot" />
+                  <span>
+                    {stats.urgentCount} 条紧急热点等待处理
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
       <div className="relative z-10 max-w-7xl mx-auto px-6 py-6 space-y-6">
-        {/* Tab */}
         <Tabs items={TABS} value={tab} onChange={setTab} />
 
         {/* 扫描结果 toast */}
         {scanReport && (
           <div
-            className={`glass-strong px-4 py-3 text-sm fade-in ${
-              scanReport.startsWith("✓")
+            className={`glass-strong flex items-center gap-2 px-4 py-3 text-sm fade-in ${
+              scanIsOk
                 ? "text-[var(--color-success-bright)]"
                 : "text-[var(--color-danger-bright)]"
             }`}
           >
-            {scanReport}
+            {scanIsOk ? <CheckCircleIcon /> : <XCircleIcon />}
+            <span>{scanReport}</span>
           </div>
         )}
 
@@ -227,7 +308,7 @@ export default function HomePage() {
             label="今日新增"
             value={stats?.todayNew ?? 0}
             hint="过去 24 小时"
-            tone="violet"
+            tone="blue"
             loading={loading && !stats}
           />
           <StatCard
@@ -235,7 +316,7 @@ export default function HomePage() {
             label="紧急热点"
             value={stats?.urgentCount ?? 0}
             hint="评分 ≥ 85"
-            tone="pink"
+            tone="red"
             loading={loading && !stats}
           />
           <StatCard
@@ -252,7 +333,10 @@ export default function HomePage() {
         <section className="glass p-5 lg:p-6">
           <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
             <h2 className="flex items-center gap-2 text-base font-semibold text-white">
-              <span className="text-orange-400">🔥</span> 实时热点流
+              <span className="text-[#00e5ff]">
+                <FlameIcon />
+              </span>
+              实时热点流
             </h2>
             <div className="text-xs text-[var(--color-text-muted)]">
               每 30 分钟自动更新
@@ -261,7 +345,9 @@ export default function HomePage() {
 
           {/* 排序条 */}
           <div className="flex items-center gap-2 flex-wrap mb-3">
-            <span className="text-xs text-[var(--color-text-muted)] mr-1">↑</span>
+            <span className="text-xs text-[var(--color-text-muted)] mr-1 inline-flex items-center">
+              <SortIcon /> 排序
+            </span>
             {SORT_OPTIONS.map((s) => (
               <button
                 key={s.id}
@@ -270,16 +356,12 @@ export default function HomePage() {
                 data-active={sort === s.id}
                 onClick={() => setSort(s.id)}
               >
-                <span>{s.icon}</span>
+                <span className="inline-flex items-center">{s.icon}</span>
                 {s.label}
               </button>
             ))}
             <div className="flex-1" />
-            <button
-              type="button"
-              className="pill"
-              data-active={filterCount > 0}
-            >
+            <button type="button" className="pill" data-active={filterCount > 0}>
               <FilterIcon />
               筛选
               {filterCount > 0 && (
@@ -345,10 +427,12 @@ export default function HomePage() {
             </div>
           ) : items.length === 0 ? (
             <div className="text-center py-16 text-[var(--color-text-muted)]">
-              <div className="text-5xl mb-3 opacity-50">📡</div>
+              <div className="text-[#67e8f9] mb-3 inline-block opacity-60">
+                <RadarLargeIcon />
+              </div>
               <div className="text-sm">
                 还没有热点 · 点击右上角{" "}
-                <span className="text-[var(--color-brand-bright)]">立即扫描</span>{" "}
+                <span className="text-[#00e5ff]">立即扫描</span>{" "}
                 开始第一轮抓取
               </div>
             </div>
@@ -357,7 +441,6 @@ export default function HomePage() {
               {items.map((item) => {
                 const tags = parseTags(item.tags);
                 const sev = scoreToSeverity(item.score);
-                const meta = parseMetric(item.sources[0]?.metric);
                 const hotness = computeHotness(item.sources, item.score);
                 return (
                   <HotItemCard
@@ -384,11 +467,9 @@ export default function HomePage() {
         </section>
       </div>
 
-      {/* 占位脚注 */}
       <footer className="max-w-7xl mx-auto px-6 py-10 text-center text-xs text-[var(--color-text-muted)]">
         HotPulse · AI 热点雷达 ·{" "}
-        <span className="text-[var(--color-brand-bright)]">Phase 2 完成</span> ·{" "}
-        AI Pipeline 即将上线
+        <span className="text-[#00e5ff]">Phase 2 完成</span> · AI Pipeline 即将上线
       </footer>
     </main>
   );
@@ -423,10 +504,7 @@ function scoreToSeverity(
   return "low";
 }
 
-function formatMetric(
-  platform: string,
-  m: Record<string, unknown>,
-): string {
+function formatMetric(platform: string, m: Record<string, unknown>): string {
   const fmt = (n: number) => {
     if (n >= 10000) return `${(n / 10000).toFixed(1)}万`;
     return n.toLocaleString();
@@ -434,18 +512,17 @@ function formatMetric(
   if (platform === "weibo" && typeof m.heat === "number") return fmt(m.heat);
   if (platform === "zhihu" && typeof m.heat === "number") return fmt(m.heat);
   if (platform === "bilibili" && typeof m.views === "number") return fmt(m.views);
-  if (platform === "github" && typeof m.stars === "number") return `★ ${m.stars}`;
-  if (platform === "twitter" && typeof m.likes === "number") return `♥ ${fmt(m.likes)}`;
-  if (platform === "hackernews" && typeof m.score === "number") return `▲ ${m.score}`;
+  if (platform === "github" && typeof m.stars === "number")
+    return `★ ${m.stars}`;
+  if (platform === "twitter" && typeof m.likes === "number")
+    return `♥ ${fmt(m.likes)}`;
+  if (platform === "hackernews" && typeof m.score === "number")
+    return `▲ ${m.score}`;
   return "";
 }
 
-function computeHotness(
-  sources: HotspotSource[],
-  score: number,
-): number {
+function computeHotness(sources: HotspotSource[], score: number): number {
   if (score > 0) return Math.min(100, Math.round(score));
-  // 没有 AI score 时基于第一个源的 metric 估算
   const first = sources[0];
   if (!first) return 0;
   const m = parseMetric(first.metric);
@@ -472,7 +549,6 @@ function FlameIcon() {
     </svg>
   );
 }
-
 function ClockIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -486,7 +562,105 @@ function ClockIcon() {
     </svg>
   );
 }
-
+function ClockMiniIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M12 7V12L15 14"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+function RefreshMiniIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M3 12C3 7.03 7.03 3 12 3C16 3 19.4 5.66 20.6 9.3M21 4V9H16M21 12C21 16.97 16.97 21 12 21C8 21 4.6 18.34 3.4 14.7M3 20V15H8"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+function TrendingUpIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M3 17L9 11L13 15L21 7M21 7H15M21 7V13"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+function BoltIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M13 2L4 14H12L11 22L20 10H12L13 2Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+function TargetIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+      <circle cx="12" cy="12" r="5" stroke="currentColor" strokeWidth="2" />
+      <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+    </svg>
+  );
+}
+function SortIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="mr-1">
+      <path
+        d="M3 6H21M6 12H18M10 18H14"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+function CheckCircleIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
+      <path
+        d="M8 12L11 15L16 9"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+function XCircleIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
+      <path
+        d="M9 9L15 15M15 9L9 15"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
 function AlertIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -505,7 +679,6 @@ function AlertIcon() {
     </svg>
   );
 }
-
 function EyeIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -518,7 +691,6 @@ function EyeIcon() {
     </svg>
   );
 }
-
 function RadarIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -535,14 +707,49 @@ function RadarIcon() {
         strokeLinecap="round"
       />
       <circle cx="13" cy="13" r="2" fill="currentColor" />
-      <path d="M13 13L21 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path
+        d="M13 13L21 5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
-
+function RadarLargeIcon() {
+  return (
+    <svg width="56" height="56" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M3 13C3 7.5 7.5 3 13 3C17.5 3 21 6.5 21 11"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M7 13C7 9.5 10 7 13 7C15.5 7 17 9 17 11"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+      <circle cx="13" cy="13" r="2" fill="currentColor" />
+      <path
+        d="M13 13L21 5"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
 function SearchIcon({ className = "" }: { className?: string }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className={className}>
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+    >
       <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.6" />
       <path
         d="M16.5 16.5L21 21"
@@ -553,7 +760,6 @@ function SearchIcon({ className = "" }: { className?: string }) {
     </svg>
   );
 }
-
 function FilterIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
@@ -566,7 +772,6 @@ function FilterIcon() {
     </svg>
   );
 }
-
 function ResetIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
@@ -592,7 +797,6 @@ function ResetIcon() {
     </svg>
   );
 }
-
 function RefreshIcon({ spinning = false }: { spinning?: boolean }) {
   return (
     <svg
@@ -631,7 +835,6 @@ function RefreshIcon({ spinning = false }: { spinning?: boolean }) {
     </svg>
   );
 }
-
 function SettingsIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none">

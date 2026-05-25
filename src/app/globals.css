@@ -23,21 +23,25 @@
   --color-line-bright: rgba(148, 163, 184, 0.2);
   --color-line-strong: rgba(148, 163, 184, 0.35);
 
-  /* 主调色 */
+  /* 主调色 —— Cyber Calm 调子：cyan-blue 单调系 */
   --color-brand: #3b82f6;
   --color-brand-bright: #60a5fa;
   --color-cyan: #22d3ee;
   --color-cyan-bright: #67e8f9;
+  /* electric cyan：扫描指示色 / 强调焦点 */
+  --color-electric: #00e5ff;
+  --color-electric-soft: rgba(0, 229, 255, 0.18);
+  /* 紫色降权为次要 tone，不再作为主调 */
   --color-violet: #8b5cf6;
   --color-violet-bright: #a78bfa;
 
-  /* 状态色 */
+  /* 状态色 —— 紧急用 electric red */
   --color-success: #10b981;
   --color-success-bright: #34d399;
   --color-warn: #f59e0b;
   --color-warn-bright: #fbbf24;
   --color-danger: #ef4444;
-  --color-danger-bright: #f87171;
+  --color-danger-bright: #ff3b3b;
   --color-pink: #ec4899;
   --color-pink-bright: #f472b6;
 
@@ -348,6 +352,75 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ============================================
+   Aceternity · CardSpotlight 鼠标跟随光晕
+   ============================================ */
+.card-spotlight {
+  position: relative;
+  isolation: isolate;
+}
+.card-spotlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(
+    var(--spot-radius, 360px) circle at var(--spot-x, 50%) var(--spot-y, 50%),
+    var(--spot-color, rgba(0, 229, 255, 0.18)),
+    transparent 60%
+  );
+  opacity: var(--spot-opacity, 0);
+  transition: opacity 300ms ease;
+  z-index: 1;
+}
+.card-spotlight > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* ============================================
+   Aceternity · BorderBeam 边框流光
+   ============================================ */
+@keyframes border-beam-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================
+   Hero 渐变文本
+   ============================================ */
+.hero-title-gradient {
+  background: linear-gradient(
+    135deg,
+    #ffffff 0%,
+    #67e8f9 30%,
+    #60a5fa 60%,
+    #00e5ff 100%
+  );
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  text-shadow: 0 0 60px rgba(0, 229, 255, 0.12);
+}
+
+/* LIVE 状态点（电流绿色），呼吸 */
+@keyframes live-dot {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55);
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(52, 211, 153, 0);
+    opacity: 0.7;
+  }
+}
+.live-dot {
+  animation: live-dot 1.8s ease-in-out infinite;
 }
 
 /* 三层背景的星点装饰 */

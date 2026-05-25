@@ -1,4 +1,8 @@
+"use client";
+
+import { useRef } from "react";
 import { Badge } from "./Badge";
+import { BorderBeam } from "./aceternity/BorderBeam";
 import { PLATFORM_META, type PlatformKey } from "@/lib/platforms";
 
 interface SourceLite {
@@ -16,21 +20,17 @@ export interface HotItemProps {
   tags?: string[];
   updatedAt: string | Date;
   sources: SourceLite[];
-  /** 严重等级：MEDIUM/HIGH/CRITICAL/LOW */
   severity?: "critical" | "high" | "medium" | "low";
-  /** 是否可信 */
   credibility?: "trusted" | "neutral" | "unreliable";
-  /** 直接提及/疑似关联 */
   reference?: "direct" | "related";
-  /** 热度（0–100） */
   hotness?: number;
 }
 
 const SEVERITY_META = {
-  critical: { tone: "red" as const, label: "CRITICAL", emoji: "⚠" },
-  high: { tone: "yellow" as const, label: "HIGH", emoji: "▲" },
-  medium: { tone: "yellow" as const, label: "MEDIUM", emoji: "◆" },
-  low: { tone: "green" as const, label: "LOW", emoji: "○" },
+  critical: { tone: "red" as const, label: "CRITICAL", icon: <AlertTriangleIcon /> },
+  high: { tone: "yellow" as const, label: "HIGH", icon: <ArrowUpIcon /> },
+  medium: { tone: "yellow" as const, label: "MEDIUM", icon: <DiamondIcon /> },
+  low: { tone: "green" as const, label: "LOW", icon: <DotIcon /> },
 };
 
 const CRED_META = {
@@ -75,37 +75,83 @@ export function HotItemCard({
   const sev = severity ? SEVERITY_META[severity] : null;
   const cred = CRED_META[credibility];
   const ref = reference ? REF_META[reference] : null;
+  const isCritical = severity === "critical";
+  const rootRef = useRef<HTMLAnchorElement | null>(null);
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    const el = rootRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    el.style.setProperty("--spot-x", `${e.clientX - rect.left}px`);
+    el.style.setProperty("--spot-y", `${e.clientY - rect.top}px`);
+    el.style.setProperty("--spot-opacity", "1");
+  };
+  const handleMouseLeave = () => {
+    const el = rootRef.current;
+    if (el) el.style.setProperty("--spot-opacity", "0");
+  };
 
   return (
     <a
+      ref={rootRef}
       href={primary?.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="block glass glass-hover p-5 group"
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      style={
+        {
+          "--spot-color": isCritical
+            ? "rgba(255, 59, 59, 0.18)"
+            : "rgba(0, 229, 255, 0.16)",
+          "--spot-radius": "420px",
+          "--spot-opacity": "0",
+        } as React.CSSProperties
+      }
+      className="card-spotlight block glass glass-hover relative p-5 group"
     >
+      {isCritical && (
+        <BorderBeam
+          duration={5}
+          size={45}
+          colorFrom="#ff3b3b"
+          colorTo="#ff8a3d"
+          borderRadius={16}
+        />
+      )}
+
       {/* 顶部 badge 行 */}
       <div className="flex flex-wrap items-center gap-1.5 mb-3">
         {sev && (
           <Badge tone={sev.tone} className="font-bold">
-            <span>{sev.emoji}</span> {sev.label}
+            <span className="inline-flex items-center">{sev.icon}</span>
+            {sev.label}
           </Badge>
         )}
         {platformMeta && (
           <Badge tone="neutral" className="font-medium">
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: platformMeta.color }} />
+            <span
+              className="w-1.5 h-1.5 rounded-full"
+              style={{ background: platformMeta.color }}
+            />
             {platformMeta.label}
           </Badge>
         )}
         {category && <Badge tone="cyan">{category}</Badge>}
-        <Badge tone={cred.tone}>● {cred.label}</Badge>
+        <Badge tone={cred.tone}>
+          <span className="w-1.5 h-1.5 rounded-full bg-current opacity-80" />
+          {cred.label}
+        </Badge>
         {ref && <Badge tone={ref.tone}>{ref.label}</Badge>}
         {typeof hotness === "number" && hotness > 0 && (
-          <Badge tone="pink">🔥 温 {Math.round(hotness)}</Badge>
+          <Badge tone="pink">
+            <FlameMiniIcon /> 温 {Math.round(hotness)}
+          </Badge>
         )}
       </div>
 
       {/* 标题 */}
-      <h3 className="text-base font-medium text-white group-hover:text-[var(--color-brand-bright)] transition-colors leading-snug line-clamp-2">
+      <h3 className="text-base font-medium text-white group-hover:text-[var(--color-cyan-bright)] transition-colors leading-snug line-clamp-2">
         {title}
       </h3>
 
@@ -126,7 +172,7 @@ export function HotItemCard({
           )}
           {typeof score === "number" && score > 0 && (
             <span className="inline-flex items-center gap-1">
-              <span className="text-[var(--color-warn-bright)]">★</span>
+              <StarIcon />
               {score.toFixed(0)}
             </span>
           )}
@@ -139,5 +185,76 @@ export function HotItemCard({
         <span className="shrink-0 tabular-nums">{timeAgo(updatedAt)}</span>
       </div>
     </a>
+  );
+}
+
+function AlertTriangleIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M12 3L22 20H2L12 3Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12 10V14M12 17V17.5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+function ArrowUpIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M12 4V20M12 4L5 11M12 4L19 11"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+function DiamondIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M12 2L22 12L12 22L2 12L12 2Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+function DotIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="4" fill="currentColor" />
+    </svg>
+  );
+}
+function StarIcon() {
+  return (
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className="text-[var(--color-warn-bright)]"
+    >
+      <path d="M12 2L14.39 8.26L21 9.27L16 14.14L17.18 21L12 17.77L6.82 21L8 14.14L3 9.27L9.61 8.26L12 2Z" />
+    </svg>
+  );
+}
+function FlameMiniIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2C12 2 9 6 9 10C9 12.5 10.5 14 12 14C13.5 14 15 12.5 15 10C15 8.5 14 7 14 7C14 7 15.5 8 16.5 10C17.5 12 17.5 14 17.5 14C17.5 18 14.5 22 12 22C9.5 22 6.5 18 6.5 14C6.5 8 12 2 12 2Z" />
+    </svg>
   );
 }
