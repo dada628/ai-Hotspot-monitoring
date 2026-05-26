@@ -6,10 +6,16 @@
  *   Header: X-API-Key
  *   Query: query (必), queryType=Latest|Top, cursor (可选)
  *
- * 策略：跑 2 条「高质量话题」搜索（中文 + 英文 AI/科技），合并去重，取 Top N。
+ * 策略（v7 起，2026-05-27）：
+ *   3 路并行（原 2 路）：
+ *     1. en-primary    —— 核心品牌名 + 主版本，min_faves:200（高门槛保品质）
+ *     2. en-secondary  —— 细分版本号变体 + AI 工具栈，min_faves:50（接受小众讨论）
+ *     3. zh            —— 中文 + 国产模型品牌，lang:zh min_faves:50
+ *   按 TwitterAPI.io 计次计费规则，路数 +50%；用户明确确认。
  */
 
 import { fetchWithTimeout } from "./http";
+import { buildKeywordQueries } from "./keywords";
 import type { RawHotItem, Scraper } from "./types";
 
 interface TweetUser {
@@ -51,16 +57,40 @@ interface AdvancedSearchResponse {
 
 const ENDPOINT = "https://api.twitterapi.io/twitter/tweet/advanced_search";
 
-/** 默认查询集：中英文混合，AI/科技为主，且要求最低互动量保证质量 */
-const QUERIES = [
-  // 英文热门 AI 话题
-  { q: "(AI OR LLM OR Claude OR ChatGPT OR OpenAI) min_faves:200 -is:retweet", queryType: "Top" as const },
-  // 中文热门话题
-  { q: "(AI OR 人工智能 OR 大模型) lang:zh min_faves:50 -is:retweet", queryType: "Top" as const },
-];
+/**
+ * 构建 3 路 Twitter 查询。
+ *   - en-primary 用 min_faves:200 把杂讯压低（核心品牌天然有高互动）
+ *   - en-secondary 用 min_faves:50（细分版本号本身讨论量小，否则零产出）
+ *   - zh 用 lang:zh + min_faves:50（中文圈互动门槛低于英文圈）
+ */
+function buildTwitterQueries(): Array<{
+  label: string;
+  q: string;
+  queryType: "Top" | "Latest";
+}> {
+  const en = buildKeywordQueries({ lang: "en" });
+  const zh = buildKeywordQueries({ lang: "zh" });
+  return [
+    {
+      label: "en-primary",
+      q: `${en.primary} min_faves:200 -is:retweet`,
+      queryType: "Top",
+    },
+    {
+      label: "en-secondary",
+      q: `${en.secondary} min_faves:50 -is:retweet`,
+      queryType: "Top",
+    },
+    {
+      label: "zh",
+      q: `${zh.primary} lang:zh min_faves:50 -is:retweet`,
+      queryType: "Top",
+    },
+  ];
+}
 
-const PER_QUERY_LIMIT = 12; // 单次查询取多少条
-const TOTAL_LIMIT = 20; // 最终归并后保留多少条
+const PER_QUERY_LIMIT = 10; // 单次查询取多少条（v6 是 12，路数 2→3 后下调避免单源压制）
+const TOTAL_LIMIT = 24; // 最终归并后保留多少条（v6 是 20）
 
 async function searchTweets(
   apiKey: string,
@@ -109,9 +139,9 @@ async function fetchTweets(): Promise<RawHotItem[]> {
     throw new Error("TWITTERAPI_IO_KEY 未配置（请在 .env 中设置）");
   }
 
-  // 并发执行多条查询
+  const queries = buildTwitterQueries();
   const results = await Promise.allSettled(
-    QUERIES.map((q) => searchTweets(apiKey, q.q, q.queryType)),
+    queries.map((q) => searchTweets(apiKey, q.q, q.queryType)),
   );
 
   const merged: Tweet[] = [];
@@ -120,7 +150,6 @@ async function fetchTweets(): Promise<RawHotItem[]> {
   }
 
   if (merged.length === 0) {
-    // 所有查询都失败
     const firstError = results.find((r) => r.status === "rejected") as
       | PromiseRejectedResult
       | undefined;

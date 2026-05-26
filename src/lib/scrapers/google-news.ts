@@ -8,12 +8,18 @@
  *   多类目并行（中英双语 × AI/科技/科学），合并去重。
  *   metric.categoryHint 给 AI Pipeline 一个分类提示（不强制覆盖 AI 的判断）。
  *
- * 2026-05-26 收紧：移除 finance-zh / society-zh 两路（用户要求"信息都跟科技相关"）。
+ * 2026-05-26 收紧（v5）：移除 finance-zh / society-zh 两路（用户要求"信息都跟科技相关"）。
  *   保留 5 路：ai-en、ai-zh、tech-en、tech-zh、science-en
- *   不再使用的 categoryHint 类型（society / finance / entertainment）从联合类型中移除。
+ *
+ * 2026-05-27 扩展（v7）：AI 类目接入 buildKeywordQueries：
+ *   ai-en  → ai-en-primary + ai-en-secondary（共 2 路）
+ *   ai-zh  → ai-zh-primary + ai-zh-secondary（共 2 路）
+ *   其余 tech-en / tech-zh / science-en 三路保持原样
+ *   路数：5 → 7；用户原例 'Codex 5.3' / 'GPT-Codex-5.3' 都会被 secondary 命中。
  */
 
 import Parser from "rss-parser";
+import { buildKeywordQueries } from "./keywords";
 import type { RawHotItem, Scraper } from "./types";
 
 interface QueryConfig {
@@ -29,46 +35,54 @@ interface QueryConfig {
 const ZH_PARAMS = "hl=zh-CN&gl=CN&ceid=CN:zh-Hans";
 const EN_PARAMS = "hl=en-US&gl=US&ceid=US:en";
 
-const QUERIES: QueryConfig[] = [
-  {
-    lang: "en",
-    categoryHint: "tech",
-    label: "ai-en",
-    url: `https://news.google.com/rss/search?q=AI+OR+LLM+OR+ChatGPT+OR+OpenAI+OR+Anthropic+OR+Gemini+when:1d&${EN_PARAMS}`,
-  },
-  {
-    lang: "zh",
-    categoryHint: "tech",
-    label: "ai-zh",
-    url: `https://news.google.com/rss/search?q=AI+OR+大模型+OR+人工智能+OR+ChatGPT+when:1d&${ZH_PARAMS}`,
-  },
-  {
-    lang: "en",
-    categoryHint: "tech",
-    label: "tech-en",
-    url: `https://news.google.com/rss/search?q=startup+OR+funding+OR+IPO+OR+"tech+industry"+when:1d&${EN_PARAMS}`,
-  },
-  {
-    lang: "zh",
-    categoryHint: "tech",
-    label: "tech-zh",
-    url: `https://news.google.com/rss/search?q=科技+OR+创业+OR+融资+OR+上市+when:1d&${ZH_PARAMS}`,
-  },
-  {
-    lang: "en",
-    categoryHint: "science",
-    label: "science-en",
-    url: `https://news.google.com/rss/search?q=research+OR+discovery+OR+breakthrough+OR+"scientific+study"+when:1d&${EN_PARAMS}`,
-  },
-];
+/**
+ * 把 OR 关键词串 + when:1d 时间窗装入 RSS URL；
+ * 关键词部分用 encodeURIComponent（包含括号/引号/中文），
+ * when:1d 部分保持明文以确保 Google News 解析时间过滤器。
+ */
+function makeAiUrl(query: string, lang: "en" | "zh"): string {
+  const params = lang === "zh" ? ZH_PARAMS : EN_PARAMS;
+  return `https://news.google.com/rss/search?q=${encodeURIComponent(query)}+when:1d&${params}`;
+}
+
+function buildQueries(): QueryConfig[] {
+  const en = buildKeywordQueries({ lang: "en" });
+  const zh = buildKeywordQueries({ lang: "zh" });
+
+  return [
+    // AI 类目：primary（核心品牌名 + 主版本）+ secondary（细分版本号 + 工具栈）
+    { lang: "en", categoryHint: "tech", label: "ai-en-primary",   url: makeAiUrl(en.primary, "en") },
+    { lang: "en", categoryHint: "tech", label: "ai-en-secondary", url: makeAiUrl(en.secondary, "en") },
+    { lang: "zh", categoryHint: "tech", label: "ai-zh-primary",   url: makeAiUrl(zh.primary, "zh") },
+    { lang: "zh", categoryHint: "tech", label: "ai-zh-secondary", url: makeAiUrl(zh.secondary, "zh") },
+    // 通用科技/科学类目：保留 v5 收紧后的 3 路
+    {
+      lang: "en",
+      categoryHint: "tech",
+      label: "tech-en",
+      url: `https://news.google.com/rss/search?q=startup+OR+funding+OR+IPO+OR+"tech+industry"+when:1d&${EN_PARAMS}`,
+    },
+    {
+      lang: "zh",
+      categoryHint: "tech",
+      label: "tech-zh",
+      url: `https://news.google.com/rss/search?q=科技+OR+创业+OR+融资+OR+上市+when:1d&${ZH_PARAMS}`,
+    },
+    {
+      lang: "en",
+      categoryHint: "science",
+      label: "science-en",
+      url: `https://news.google.com/rss/search?q=research+OR+discovery+OR+breakthrough+OR+"scientific+study"+when:1d&${EN_PARAMS}`,
+    },
+  ];
+}
 
 /**
- * 单路查询取 10 条，5 路并行原则上有 50 条，去重后取前 32 条。
- * 上限设 32 避免 Google News 单源在前端"压制"其他源；
- * 删掉 finance/society 两路后总召回降低，相应下调 TOTAL_LIMIT 与 v4 比例一致。
+ * 单路查询取 8 条（v6 是 10，v7 路数增 5→7 后下调避免 AI 类目压制其他类目），
+ * 7 路并行原则上有 56 条，去重后取前 36 条。
  */
-const PER_QUERY_LIMIT = 10;
-const TOTAL_LIMIT = 32;
+const PER_QUERY_LIMIT = 8;
+const TOTAL_LIMIT = 36;
 
 interface GoogleNewsItem {
   title?: string;
@@ -126,7 +140,8 @@ async function fetchOneFeed(q: QueryConfig): Promise<RawHotItem[]> {
 }
 
 async function fetchGoogleNews(): Promise<RawHotItem[]> {
-  const results = await Promise.allSettled(QUERIES.map((q) => fetchOneFeed(q)));
+  const queries = buildQueries();
+  const results = await Promise.allSettled(queries.map((q) => fetchOneFeed(q)));
 
   const merged: RawHotItem[] = [];
   let firstFailReason: string | undefined;
@@ -141,7 +156,7 @@ async function fetchGoogleNews(): Promise<RawHotItem[]> {
 
   if (merged.length === 0) {
     throw new Error(
-      `Google News 全部 ${QUERIES.length} 路 query 失败: ${firstFailReason ?? "unknown"}`,
+      `Google News 全部 ${queries.length} 路 query 失败: ${firstFailReason ?? "unknown"}`,
     );
   }
 

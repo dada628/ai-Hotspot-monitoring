@@ -15,6 +15,7 @@
 
 import { fetchJSON } from "./http";
 import { isTechRelated } from "@/lib/tech-filter";
+import { buildKeywordQueries } from "./keywords";
 import type { RawHotItem, Scraper } from "./types";
 
 interface HnFirebaseItem {
@@ -48,8 +49,29 @@ interface AlgoliaResponse {
 const FIREBASE_BASE = "https://hacker-news.firebaseio.com/v0";
 const ALGOLIA_BASE = "https://hn.algolia.com/api/v1";
 const TOP_N = 15;
-const AI_QUERY = "AI OR LLM OR Claude OR ChatGPT OR OpenAI OR DeepSeek";
 const AI_HITS = 20;
+
+/**
+ * Algolia AI 专题搜索的关键词串（v7 起）：
+ *   合并 primary + secondary 两条 OR query 为一条长 OR，保证用户原例
+ *   'Codex 5.3' / 'GPT-Codex-5.3' / 'Claude Opus 4.5' / 'Gemini 3' 等
+ *   细分模型变体都被覆盖。
+ *
+ *   每条 query 上限 700 字符（HN Algolia URL 编码后约 1500 字符，安全）。
+ *
+ *   形式：(primary 内别名 OR ...) OR (secondary 内别名 OR ...)
+ *   Algolia/Lucene 支持嵌套 OR，正常解析。
+ */
+function buildAiQuery(): string {
+  const { primary, secondary } = buildKeywordQueries({
+    lang: "en",
+    maxChars: 700,
+  });
+  if (primary === "()" && secondary === "()") return "AI OR LLM";
+  if (primary === "()") return secondary;
+  if (secondary === "()") return primary;
+  return `${primary} OR ${secondary}`;
+}
 
 async function fetchTopStories(): Promise<RawHotItem[]> {
   const ids = await fetchJSON<number[]>(`${FIREBASE_BASE}/topstories.json`, {
@@ -105,9 +127,10 @@ async function fetchTopStories(): Promise<RawHotItem[]> {
 async function fetchAlgoliaSearch(): Promise<RawHotItem[]> {
   // 使用 search_by_date 排除老旧帖子；过去 7 天内
   const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 86400;
+  const aiQuery = buildAiQuery();
   const url =
     `${ALGOLIA_BASE}/search?` +
-    `query=${encodeURIComponent(AI_QUERY)}` +
+    `query=${encodeURIComponent(aiQuery)}` +
     `&tags=story` +
     `&hitsPerPage=${AI_HITS}` +
     `&numericFilters=created_at_i>${sevenDaysAgo},points>30`;
