@@ -11,6 +11,7 @@
 import { db } from "@/lib/db";
 import { runAll, type Platform, type ScrapeResult } from "@/lib/scrapers";
 import { calcEngagementScore } from "@/lib/score";
+import { extractPublishedAt } from "@/lib/published-at";
 
 export interface IngestSummary {
   startedAt: Date;
@@ -32,12 +33,14 @@ async function persistResult(r: ScrapeResult) {
   let updated = 0;
 
   for (const item of r.items) {
-    const metricStr = JSON.stringify(item.metric ?? {});
+    const metric = item.metric ?? {};
+    const metricStr = JSON.stringify(metric);
     const engagement = calcEngagementScore(
       item.platform,
-      item.metric ?? {},
+      metric,
       item.fetchedAt,
     );
+    const publishedAt = extractPublishedAt(item.platform, metric);
 
     const existing = await db.hotSpotSource.findUnique({
       where: {
@@ -53,14 +56,22 @@ async function persistResult(r: ScrapeResult) {
           metric: metricStr,
           rawTitle: item.title,
           fetchedAt: item.fetchedAt,
+          publishedAt,
         },
       });
       // 重新计算该 HotSpot 的 engagementScore（取所有 source 的最高分）
+      // 同时取所有 source 里最早的 publishedAt 作为 HotSpot.publishedAt
       const allSources = await db.hotSpotSource.findMany({
         where: { hotSpotId: existing.hotSpotId },
-        select: { platform: true, metric: true, fetchedAt: true },
+        select: {
+          platform: true,
+          metric: true,
+          fetchedAt: true,
+          publishedAt: true,
+        },
       });
       let maxScore = 0;
+      let earliestPublished: Date | null = null;
       for (const s of allSources) {
         let m: Record<string, unknown> = {};
         try {
@@ -70,21 +81,29 @@ async function persistResult(r: ScrapeResult) {
         }
         const sc = calcEngagementScore(s.platform, m, s.fetchedAt);
         if (sc > maxScore) maxScore = sc;
+        if (
+          s.publishedAt &&
+          (!earliestPublished ||
+            s.publishedAt.getTime() < earliestPublished.getTime())
+        ) {
+          earliestPublished = s.publishedAt;
+        }
       }
       await db.hotSpot.update({
         where: { id: existing.hotSpotId },
         data: {
           updatedAt: new Date(),
           engagementScore: maxScore,
+          publishedAt: earliestPublished,
         },
       });
       updated += 1;
     } else {
-      // 新建 HotSpot + HotSpotSource（AI Pipeline 上线后会接管合并/打分）
       await db.hotSpot.create({
         data: {
           title: item.title,
           engagementScore: engagement,
+          publishedAt,
           sources: {
             create: {
               platform: item.platform,
@@ -92,6 +111,7 @@ async function persistResult(r: ScrapeResult) {
               rawTitle: item.title,
               metric: metricStr,
               fetchedAt: item.fetchedAt,
+              publishedAt,
             },
           },
         },

@@ -110,6 +110,7 @@ async function fetchReddit(): Promise<RawHotItem[]> {
         upvoteRatio: d.upvote_ratio ?? 0,
         author: d.author ?? "",
         subreddit: d.subreddit ?? "",
+        publishedAt: d.created_utc ?? 0,
       },
     });
   }

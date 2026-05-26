@@ -199,6 +199,7 @@ async function fetchTweets(): Promise<RawHotItem[]> {
         views: getMetric(t, "viewCount", "view_count"),
         author: user?.userName ?? user?.screen_name ?? "",
         authorName: user?.name ?? "",
+        publishedAt: t.createdAt ?? "",
       },
     };
   });

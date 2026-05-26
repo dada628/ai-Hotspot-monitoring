@@ -92,6 +92,8 @@ model HotSpot {
   entities      String   @default("[]")
   /// AI Pipeline 最近一次处理时间，便于详情页展示"已 AI 增强"标记
   processedAt   DateTime?
+  /// 帖子在原平台的真实发布时间（多源时取最早），null = 平台未提供
+  publishedAt   DateTime?
   /// active | archived
   status        String   @default("active")
   firstSeenAt   DateTime @default(now())
@@ -104,6 +106,7 @@ model HotSpot {
   @@index([engagementScore])
   @@index([category])
   @@index([firstSeenAt])
+  @@index([publishedAt])
   @@index([status])
 }
 
@@ -117,6 +120,8 @@ model HotSpotSource {
   rawTitle  String
   /// JSON 序列化：{ likes, comments, shares, stars, ... }
   metric    String   @default("{}")
+  /// 该 source 的发布时间（从 metric 解析后落库，便于排序/查询）
+  publishedAt DateTime?
   fetchedAt DateTime @default(now())
 
   hotSpot HotSpot @relation(fields: [hotSpotId], references: [id], onDelete: Cascade)

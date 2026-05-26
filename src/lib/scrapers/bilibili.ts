@@ -75,6 +75,7 @@ export const bilibiliScraper: Scraper = {
         danmaku: it.stat?.danmaku ?? 0,
         author: it.owner?.name ?? "",
         category: it.tname ?? "",
+        publishedAt: it.pubdate ?? 0,
       },
       rank: idx + 1,
       fetchedAt: now,
