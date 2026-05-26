@@ -484,6 +484,23 @@ async function testTechFilter() {
       fail(g, "英文科技正样本全命中", `漏: ${enMissed.join(" | ")}`);
     }
 
+    // 3.5) v6 新增词覆盖（工程术语 + AI/数据术语 + 短词）
+    const v6Positive = [
+      "Building a C compiler in Rust",
+      "How encryption protects your data",
+      "RAG vs fine-tuning: which is better?",
+      "Postgres benchmark vs MySQL 8",
+      "Kubernetes orchestration in production",
+      "RLHF training pipeline explained",
+      "Pinecone vs Weaviate for vector database",
+    ];
+    const v6Missed = v6Positive.filter((s) => !isTechRelated(s));
+    if (v6Missed.length === 0) {
+      pass(g, "v6 新增词正样本全命中", `${v6Positive.length} 条 OK`);
+    } else {
+      fail(g, "v6 新增词正样本全命中", `漏: ${v6Missed.join(" | ")}`);
+    }
+
     // 4) 负样本必须拒绝（典型娱乐/社会/政经）
     const negative = [
       "刘德华演唱会延期",

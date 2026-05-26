@@ -3,7 +3,7 @@
  *
  * 设计目标：
  *   - 在抓取层把"通用平台"（weibo / zhihu / bilibili / hackernews topstories）的非科技噪音挡在入库之外
- *   - 维护一份中英双语的"科技专业词"白名单（~110 词，用户选定 tech_broad 范围）
+ *   - 维护一份中英双语的"科技专业词"白名单（v6 扩到 ~270 词，覆盖工程术语 + AI/数据细分）
  *   - 标题/摘要命中任一关键词 → 视为科技相关 → 允许入库
  *
  * 用户决策（2026-05-26）：
@@ -11,8 +11,13 @@
  *   - 不含娱乐圈"明星名+科技产品"边缘词（如"周杰伦发布新专辑"不该被科技词带过）
  *   - 不含纯财经/政经词
  *
+ * v6（2026-05-26 晚）扩词原因：
+ *   - v5 清理脚本踩坑：HN/Twitter 大量"C compiler / Twilio / bytecode / encryption"被误删
+ *   - 补 31 个英文工程术语 + 17 个 AI/数据术语 + 5 个 AI 短词（共 53 新词）
+ *   - 刻意剔除 framework / kernel / container / attention / gradient / research 等普通英语高频词
+ *
  * 性能：
- *   - 单次调用 O(N)（N = 关键词数），N ≈ 110 → 每条标题判定 < 0.05ms
+ *   - 单次调用 O(N)（N = 关键词数），N ≈ 200+ → 每条标题判定 < 0.1ms
  *   - 中文走 includes（中文无词边界问题）
  *   - 英文短词（≤4 字母）走 \b...\b 正则避免误匹配（如 "AI" 不该匹配 "said"）
  *   - 英文长词走 lowercase includes
@@ -174,6 +179,12 @@ const EN_SHORT_KEYWORDS = [
   "iOS",
   "iPad",
   "Web3",
+  // === T1 v6 新增：AI/数据短词（用 \b 边界避免误命中）===
+  "MoE", // Mixture of Experts
+  "RLHF", // Reinforcement Learning from Human Feedback
+  "CUDA",
+  "SLAM",
+  "JAX",
 ];
 
 /** 英文长词：lowercase includes（≥5 字母不易误命中） */
@@ -278,10 +289,65 @@ const EN_LONG_KEYWORDS = [
   "developer",
   "engineer",
   "algorithm",
-  "research",
+  // 注：原列表中的 "research" 在 v6 移除——普通英语高频（"The research found ..."）误命中率高
   "neural",
   "machine learning",
   "deep learning",
+  // === T1 v6 新增：英文工程术语（31 词，v5 踩坑过 HN/Twitter 词表覆盖不足）===
+  // 注：刻意剔除"普通英语高频词"如 framework / kernel / container / protocol /
+  //     orchestration / distributed / resilience / optimization 等，
+  //     避免误命中 "He paid attention to ..." 类普通句。
+  "compiler",
+  "encryption",
+  "bytecode",
+  "firmware",
+  "runtime",
+  "database",
+  "parser",
+  "serverless",
+  "cybersecurity",
+  "debugging",
+  "refactor",
+  "wireless",
+  "hashing",
+  "microservice",
+  "observability",
+  "devops",
+  "ci/cd",
+  "api gateway",
+  "message queue",
+  "redis",
+  "postgres",
+  "graphql",
+  "webhook",
+  "benchmark",
+  "bandwidth",
+  "latency",
+  "throughput",
+  "scalability",
+  "open source",
+  "stack overflow",
+  "oauth",
+  "hipaa",
+  // === T1 v6 新增：AI/数据术语（17 词；已存在的 embedding/pytorch/tensorflow/diffusion/transformer/agent/mistral 不重复）===
+  // 同样剔除 attention / gradient / reasoning 这类太泛的普通词
+  "langchain",
+  "vllm",
+  "fine-tuning",
+  "fine tuning",
+  "prompt engineering",
+  "tokenizer",
+  "context window",
+  "backpropagation",
+  "vector database",
+  "pinecone",
+  "weaviate",
+  "qdrant",
+  "chromadb",
+  "knowledge graph",
+  "agentic",
+  "quantization",
+  "jupyter",
 ];
 
 /**
