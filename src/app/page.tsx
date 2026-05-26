@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Brand } from "@/components/Brand";
 import { Tabs } from "@/components/Tabs";
@@ -11,6 +11,19 @@ import { Spotlight } from "@/components/aceternity/Spotlight";
 import { Sparkles } from "@/components/aceternity/Sparkles";
 import { BorderBeam } from "@/components/aceternity/BorderBeam";
 import { ALL_PLATFORMS, PLATFORM_META } from "@/lib/platforms";
+
+/** AI Pipeline 进度快照（与 src/lib/ai/pipeline.ts 的 ProgressSnapshot 同结构） */
+interface ProgressSnapshot {
+  running: boolean;
+  scanned: number;
+  succeeded: number;
+  failed: number;
+  total: number;
+  currentTitle: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  modelId: string | null;
+}
 
 interface HotspotSource {
   platform: string;
@@ -114,11 +127,22 @@ export default function HomePage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [items, setItems] = useState<Hotspot[]>([]);
   const [loading, setLoading] = useState(true);
-  const [scanning, setScanning] = useState(false);
+
+  // v6 T2：扫描 / AI 处理统一状态机
+  const [phase, setPhase] = useState<"idle" | "scanning" | "processing">(
+    "idle",
+  );
   const [scanReport, setScanReport] = useState<string | null>(null);
   const [lastScanAt, setLastScanAt] = useState<number | null>(null);
-  const [processing, setProcessing] = useState(false);
   const [aiReport, setAiReport] = useState<string | null>(null);
+  const [progress, setProgress] = useState<ProgressSnapshot | null>(null);
+  const [showActionMenu, setShowActionMenu] = useState(false);
+  const actionMenuRef = useRef<HTMLDivElement | null>(null);
+
+  // 派生：保持向下兼容（其它 UI 仍使用 scanning/processing 两个布尔）
+  const scanning = phase === "scanning";
+  const processing = phase === "processing";
+  const isBusy = phase !== "idle";
 
   const [sort, setSort] = useState("hotness");
   const [platform, setPlatform] = useState("all");
@@ -164,16 +188,61 @@ export default function HomePage() {
     loadAll();
   }, [loadAll]);
 
+  // v6 T2：phase=processing 时启动 2s polling 获取 AI 实时进度
+  useEffect(() => {
+    if (phase !== "processing") {
+      setProgress(null);
+      return;
+    }
+    let stopped = false;
+    const tick = async () => {
+      try {
+        const res = await fetch("/api/process/status", { cache: "no-store" });
+        if (res.ok) {
+          const data = (await res.json()) as ProgressSnapshot;
+          if (!stopped) setProgress(data);
+        }
+      } catch {
+        // 单次失败不致命；下次再试
+      }
+    };
+    void tick(); // 立即拉一次
+    const interval = setInterval(tick, 2000);
+    return () => {
+      stopped = true;
+      clearInterval(interval);
+    };
+  }, [phase]);
+
+  // v6 T2：点击下拉菜单外面关闭它
+  useEffect(() => {
+    if (!showActionMenu) return;
+    const handler = (e: MouseEvent) => {
+      const ref = actionMenuRef.current;
+      if (ref && !ref.contains(e.target as Node)) {
+        setShowActionMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showActionMenu]);
+
+  // ====================== 三个执行函数 ======================
+  // 通用：本地 dev 用，未来 Phase 4 接登录后改为同源 cookie
+  const BEARER = "Bearer dev-cron-secret-please-replace-1234567890";
+
+  /** 仅扫描（不接 AI） */
   const triggerScan = async () => {
-    if (scanning) return;
-    setScanning(true);
+    if (isBusy) return;
+    setShowActionMenu(false);
+    setPhase("scanning");
     setScanReport(null);
     try {
       const res = await fetch("/api/ingest", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: "Bearer dev-cron-secret-please-replace-1234567890",
+          Authorization: BEARER,
         },
       });
       const data: IngestSummary = await res.json();
@@ -188,20 +257,22 @@ export default function HomePage() {
         `扫描失败：${err instanceof Error ? err.message : String(err)}`,
       );
     } finally {
-      setScanning(false);
+      setPhase("idle");
     }
   };
 
+  /** 仅 AI 处理（对未处理的批量跑） */
   const triggerAiProcess = async () => {
-    if (processing) return;
-    setProcessing(true);
+    if (isBusy) return;
+    setShowActionMenu(false);
+    setPhase("processing");
     setAiReport(null);
     try {
       const res = await fetch("/api/process?limit=20&scope=unprocessed", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: "Bearer dev-cron-secret-please-replace-1234567890",
+          Authorization: BEARER,
         },
       });
       const data: AiProcessResponse = await res.json();
@@ -223,7 +294,83 @@ export default function HomePage() {
         `AI 处理失败：${err instanceof Error ? err.message : String(err)}`,
       );
     } finally {
-      setProcessing(false);
+      setPhase("idle");
+    }
+  };
+
+  /** 一键全套：先扫描，扫完直接接 AI 处理 */
+  const triggerAll = async () => {
+    if (isBusy) return;
+    setShowActionMenu(false);
+    setScanReport(null);
+    setAiReport(null);
+
+    // ----- 1) 扫描 -----
+    setPhase("scanning");
+    try {
+      const ingestRes = await fetch("/api/ingest", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: BEARER,
+        },
+      });
+      const ingestData: IngestSummary = await ingestRes.json();
+      if (!ingestRes.ok) {
+        throw new Error(`ingest HTTP ${ingestRes.status}`);
+      }
+      const totalNew = ingestData.results.reduce(
+        (s, r) => s + (r.inserted ?? 0),
+        0,
+      );
+      setScanReport(
+        `扫描完成 · 新增 ${totalNew} 条 · 用时 ${ingestData.totalDurationMs}ms`,
+      );
+      setLastScanAt(Date.now());
+    } catch (err) {
+      setScanReport(
+        `扫描失败：${err instanceof Error ? err.message : String(err)}`,
+      );
+      setPhase("idle");
+      return;
+    }
+
+    // ----- 2) AI 处理（接力，phase 切到 processing 启动 polling）-----
+    setPhase("processing");
+    try {
+      const processRes = await fetch(
+        "/api/process?limit=20&scope=unprocessed",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: BEARER,
+          },
+        },
+      );
+      const processData = (await processRes.json()) as
+        | AiProcessResponse
+        | { error?: string };
+      if (!processRes.ok) {
+        const errAny = processData as { error?: string };
+        throw new Error(errAny?.error || `HTTP ${processRes.status}`);
+      }
+      const ok = processData as AiProcessResponse;
+      const secs = (ok.ai.totalDurationMs / 1000).toFixed(1);
+      setAiReport(
+        `AI 处理完成 · 成功 ${ok.ai.succeeded}/${ok.ai.scanned} 条` +
+          ` · 用时 ${secs}s` +
+          (ok.alerts.alertsCreated > 0
+            ? ` · 触发预警 ${ok.alerts.alertsCreated} 条`
+            : ""),
+      );
+      await loadAll();
+    } catch (err) {
+      setAiReport(
+        `AI 处理失败：${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      setPhase("idle");
     }
   };
 
@@ -257,45 +404,87 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-6 py-3.5 flex items-center justify-between">
           <Brand />
           <div className="flex items-center gap-2">
-            <div className="relative">
-              <button
-                type="button"
-                onClick={triggerScan}
-                disabled={scanning}
-                className="relative btn btn-primary"
-              >
-                <RefreshIcon spinning={scanning} />
-                {scanning ? "扫描中..." : "立即扫描"}
-              </button>
-              {scanning && (
+            {/* v6 T2：一键扫描+AI 主按钮 + 下拉（3 种触发方式） */}
+            <div className="relative" ref={actionMenuRef}>
+              <div className="inline-flex">
+                <button
+                  type="button"
+                  onClick={triggerAll}
+                  disabled={isBusy}
+                  className="relative btn btn-primary rounded-r-none pr-3"
+                  title="先扫描多源 → 再对未处理的 HotSpot 跑 AI 分类/摘要/评分"
+                >
+                  {phase === "idle" && (
+                    <>
+                      <SparklesIcon /> 扫描 + AI
+                    </>
+                  )}
+                  {phase === "scanning" && (
+                    <>
+                      <RefreshIcon spinning /> 扫描中…
+                    </>
+                  )}
+                  {phase === "processing" &&
+                    progress &&
+                    progress.total > 0 && (
+                      <>
+                        <SparklesIcon spinning /> 处理 {progress.scanned}/
+                        {progress.total}
+                      </>
+                    )}
+                  {phase === "processing" &&
+                    (!progress || progress.total === 0) && (
+                      <>
+                        <SparklesIcon spinning /> AI 处理中…
+                      </>
+                    )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowActionMenu((v) => !v)}
+                  disabled={isBusy}
+                  className="relative btn btn-primary rounded-l-none px-2 border-l border-l-white/15"
+                  aria-label="更多操作"
+                  aria-expanded={showActionMenu}
+                  title="选择仅扫描 / 仅 AI / 一键全套"
+                >
+                  <ChevronDownIcon />
+                </button>
+              </div>
+              {isBusy && (
                 <BorderBeam
-                  duration={2.2}
+                  duration={phase === "processing" ? 2.6 : 2.2}
                   size={55}
-                  colorFrom="#00e5ff"
-                  colorTo="#a5e7ff"
+                  colorFrom={phase === "processing" ? "#a78bfa" : "#00e5ff"}
+                  colorTo={phase === "processing" ? "#67e8f9" : "#a5e7ff"}
                   borderRadius={10}
                 />
               )}
-            </div>
-            <div className="relative">
-              <button
-                type="button"
-                onClick={triggerAiProcess}
-                disabled={processing}
-                className="relative btn btn-secondary"
-                title="对未 AI 处理的热点跑分类/摘要/评分"
-              >
-                <SparklesIcon spinning={processing} />
-                {processing ? "AI 处理中..." : "AI 处理"}
-              </button>
-              {processing && (
-                <BorderBeam
-                  duration={2.6}
-                  size={55}
-                  colorFrom="#a78bfa"
-                  colorTo="#67e8f9"
-                  borderRadius={10}
-                />
+              {/* 下拉菜单 */}
+              {showActionMenu && (
+                <div className="absolute right-0 top-full mt-1.5 z-50 min-w-[200px] glass-strong rounded-lg overflow-hidden shadow-xl shadow-black/40">
+                  <button
+                    type="button"
+                    onClick={triggerScan}
+                    className="flex items-center gap-2 w-full px-3.5 py-2.5 text-sm text-left text-white hover:bg-[rgba(0,229,255,0.08)] transition-colors"
+                  >
+                    <RefreshIcon /> 仅扫描多源
+                  </button>
+                  <button
+                    type="button"
+                    onClick={triggerAiProcess}
+                    className="flex items-center gap-2 w-full px-3.5 py-2.5 text-sm text-left text-white hover:bg-[rgba(167,139,250,0.08)] transition-colors border-t border-[var(--color-line)]"
+                  >
+                    <SparklesIcon /> 仅 AI 处理
+                  </button>
+                  <button
+                    type="button"
+                    onClick={triggerAll}
+                    className="flex items-center gap-2 w-full px-3.5 py-2.5 text-sm text-left text-white hover:bg-[rgba(0,229,255,0.08)] transition-colors border-t border-[var(--color-line)]"
+                  >
+                    <BoltIcon /> 一键全套（默认）
+                  </button>
+                </div>
               )}
             </div>
             <Link
@@ -356,6 +545,17 @@ export default function HomePage() {
                   <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-danger-bright)] live-dot" />
                   <span>
                     {stats.urgentCount} 条紧急热点等待处理
+                  </span>
+                </div>
+              )}
+              {/* v6 T2：AI 处理进度详情（仅 processing 时显示） */}
+              {phase === "processing" && progress && progress.total > 0 && (
+                <div className="flex items-center gap-2 text-xs text-[#a78bfa] max-w-[280px]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#a78bfa] live-dot shrink-0" />
+                  <span className="truncate">
+                    {progress.currentTitle
+                      ? `正在处理：${progress.currentTitle}`
+                      : `已成功 ${progress.succeeded} · 失败 ${progress.failed}`}
                   </span>
                 </div>
               )}
@@ -980,6 +1180,19 @@ function SparklesIcon({ spinning = false }: { spinning?: boolean }) {
       <path
         d="M5 15L5.5 16.5L7 17L5.5 17.5L5 19L4.5 17.5L3 17L4.5 16.5L5 15Z"
         fill="currentColor"
+      />
+    </svg>
+  );
+}
+function ChevronDownIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M6 9L12 15L18 9"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );

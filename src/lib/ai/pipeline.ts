@@ -19,6 +19,51 @@ import { score as scoreItem } from "./prompts/score";
 import { calcEngagementScore } from "@/lib/score";
 import type { Category, AiEnrichedFields } from "./schemas";
 
+// ===================== 进度量化（v6 T2 · 模块级内存状态）=====================
+//
+// 用于让前端通过 GET /api/process/status 拿到当前 processBatch 的实时进度，
+// 实现"正在处理 12/20 · 当前: <title>"这种细粒度反馈。
+//
+// 注意：使用模块级变量意味着 Next.js dev 热重载会重置；多实例部署也无法共享。
+// TODO Phase 6: 上 Vercel 时需要迁到 Redis/DB（当前本地 dev 单实例足够）。
+
+export interface ProgressSnapshot {
+  /** 是否有 batch 在跑 */
+  running: boolean;
+  /** 已处理（成功 + 失败）条数 */
+  scanned: number;
+  succeeded: number;
+  failed: number;
+  /** 本批共计要处理的条数 */
+  total: number;
+  /** 当前正在处理的标题（截断到 40 字） */
+  currentTitle: string | null;
+  /** ISO 时间 */
+  startedAt: string | null;
+  finishedAt: string | null;
+  modelId: string | null;
+}
+
+let currentProgress: ProgressSnapshot = {
+  running: false,
+  scanned: 0,
+  succeeded: 0,
+  failed: 0,
+  total: 0,
+  currentTitle: null,
+  startedAt: null,
+  finishedAt: null,
+  modelId: null,
+};
+
+export function getCurrentProgress(): ProgressSnapshot {
+  return { ...currentProgress };
+}
+
+function truncateTitle(t: string): string {
+  return t.length > 40 ? `${t.slice(0, 40)}…` : t;
+}
+
 // ===================== 入参与出参 =====================
 
 export interface ProcessOptions {
@@ -77,9 +122,27 @@ export async function processBatch(
   let succeeded = 0;
   let failed = 0;
 
+  // 初始化进度快照（前端 polling /api/process/status 时能读到）
+  currentProgress = {
+    running: true,
+    scanned: 0,
+    succeeded: 0,
+    failed: 0,
+    total: hotSpots.length,
+    currentTitle: null,
+    startedAt: startedAt.toISOString(),
+    finishedAt: null,
+    modelId: options.modelId ?? "default",
+  };
+
   // === 2) 逐条串行处理 ===
   for (const h of hotSpots) {
     const itemStart = Date.now();
+    // 更新"当前正在处理"（用于前端展示）
+    currentProgress = {
+      ...currentProgress,
+      currentTitle: truncateTitle(h.title),
+    };
     try {
       const enriched = await processOne(h, options.modelId);
 
@@ -117,7 +180,22 @@ export async function processBatch(
       failed += 1;
       console.error(`[ai-pipeline] ${h.id} 处理失败:`, msg);
     }
+    // 单条结束 → 更新进度
+    currentProgress = {
+      ...currentProgress,
+      scanned: succeeded + failed,
+      succeeded,
+      failed,
+    };
   }
+
+  // 结束态
+  currentProgress = {
+    ...currentProgress,
+    running: false,
+    currentTitle: null,
+    finishedAt: new Date().toISOString(),
+  };
 
   return {
     startedAt,
