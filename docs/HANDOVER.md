@@ -1,7 +1,7 @@
 # HotPulse · AI 项目交接文档
 
 > **此文档面向"下一个 AI"** —— 新开对话时让 AI 快速恢复完整项目上下文，避免重新理解或踩历史决策的坑。
-> 最后更新：2026-05-26（**v5**，含信息流交互修复 + 科技相关性源头过滤）
+> 最后更新：2026-05-26（**v6**，含词表扩展 + AI 24h 覆盖率卡 + 一键扫描+AI 按钮 + 进度轮询）
 
 ---
 
@@ -15,11 +15,11 @@
 | **包名** | `ai-hotspot-monitoring`（`package.json`） |
 | **运行平台** | Windows（PowerShell），本地开发 |
 | **GitHub 仓库** | <https://github.com/dada628/ai-Hotspot-monitoring>（main 分支已托管） |
-| **当前阶段** | Phase 1+2+2.5+2.6+2.7+2.8+2.9 ✅ · **Phase 3 AI Pipeline ✅** · **Phase 2.X 详情页 + 相关推荐 + 多类目扩展 ✅** · **Phase 2.Y v5 信息流交互修复 + 科技源头过滤 ✅** · Phase 4 用户认证 UI 待开工 |
-| **测试** | `npx tsx scripts/e2e-test.ts` —— **61 项 PASS**（v4 55 项 + v5 新增 6 项 TechFilter 单元测） |
+| **当前阶段** | Phase 1+2+2.5+2.6+2.7+2.8+2.9 ✅ · **Phase 3 AI Pipeline ✅** · **Phase 2.X 详情页 + 相关推荐 + 多类目扩展 ✅** · **Phase 2.Y v5 信息流交互修复 + 科技源头过滤 ✅** · **Phase 2.Z v6 UX 优化第一波（词表/统计卡/一键按钮+进度）✅** · Phase 4 用户认证 UI 待开工 |
+| **测试** | `npx tsx scripts/e2e-test.ts` —— **62 项 PASS**（v5 61 项 + v6 新增 1 项 TechFilter v6 词表正样本） |
 | **dev URL** | <http://localhost:3000> |
 | **AI 默认模型** | `deepseek/deepseek-v3.2`（OpenRouter，含 response-healing 插件） |
-| **HEAD commit** | `6d4bf79` chore(scripts): 一次性清理历史非科技 HotSpot 脚本 |
+| **HEAD commit** | `61d9de4` feat(ui): 一键扫描+AI 按钮 + /api/process/status 进度轮询 |
 
 ---
 
@@ -91,7 +91,7 @@ ai-Hotspot monitoring/
 │   ├── DESIGN.md                     # ADR D-001 ~ D-012
 │   └── HANDOVER.md                   # ← 你正在读
 ├── scripts/
-│   ├── e2e-test.ts                   # ★ v5 升至 61 项（v4 55 + v5 新增 6 项 TechFilter）
+│   ├── e2e-test.ts                   # ★ v6 升至 62 项（v5 61 + v6 新增 1 项 TechFilter v6 词表正样本）
 │   ├── backfill-engagement-score.ts  # 一次性回填工具（公式调整后可重跑）
 │   ├── cleanup-non-tech.ts           # ★ v5 新增 · 一次性清理非科技 HotSpot（dry-run/--apply）
 │   ├── debug-stats.ts                # ★ 本地诊断脚本（已在 .gitignore，不进 git）
@@ -104,7 +104,7 @@ ai-Hotspot monitoring/
 │   └── dev.db                        # SQLite，运行时生成
 ├── src/
 │   ├── app/
-│   │   ├── page.tsx                  # ★ v5 修改 · time/cred URL 透传 + 相关性 pill 无 kw 时禁用
+│   │   ├── page.tsx                  # ★ v6 重写 · phase 状态机 + 一键扫描+AI 主按钮 + 下拉 3 选项 + polling 进度
 │   │   ├── hotspot/[id]/page.tsx     # ★ v4 新增 · 单条详情页（单列长页布局）
 │   │   ├── admin/ingest/page.tsx     # 数据采集控制台
 │   │   ├── dashboard/page.tsx        # Phase 4 占位
@@ -115,10 +115,11 @@ ai-Hotspot monitoring/
 │   │       ├── auth/[...nextauth]/route.ts
 │   │       ├── ingest/route.ts                  # POST 触发抓取（Bearer ${CRON_SECRET}）
 │   │       ├── process/route.ts                 # ★ v3 新增 · POST 触发 AI Pipeline
+│   │       ├── process/status/route.ts          # ★ v6 新增 · GET 当前 AI 处理进度（供前端 polling）
 │   │       ├── hotspots/route.ts                # ★ v5 重写 · 5 种排序差异化 + time 窗口 + relevance 需 kw
 │   │       ├── hotspots/[id]/route.ts           # ★ v4 新增 · GET 单条详情（14 字段 + sources）
 │   │       ├── hotspots/[id]/related/route.ts   # ★ v4 新增 · GET 相关推荐
-│   │       └── admin/stats/route.ts
+│   │       └── admin/stats/route.ts             # ★ v6 修改 · 新增 aiCoverage24h 字段
 │   ├── components/
 │   │   ├── Brand.tsx
 │   │   ├── StatCard.tsx              # 内嵌 card-spotlight 鼠标跟手光晕
@@ -137,7 +138,7 @@ ai-Hotspot monitoring/
 │       ├── platforms.ts              # 9 平台元数据
 │       ├── ingest.ts                 # 抓取→入库；engagementScore 计算
 │       ├── score.ts                  # 本地兜底评分（9 平台公式 + 24h 衰减）
-│       ├── tech-filter.ts            # ★ v5 新增 · 科技关键词白名单 + isTechRelated/isBilibiliTechPartition
+│       ├── tech-filter.ts            # ★ v6 扩词到 ~295（+53 工程/AI 术语，删 research 防误命中）
 │       ├── scrapers/
 │       │   ├── index.ts              # 注册中心（9 个 scraper）
 │       │   ├── types.ts              # Platform 类型（9 个）
@@ -155,7 +156,7 @@ ai-Hotspot monitoring/
 │           ├── models.ts             # 7 个国产模型 + DEFAULT_MODEL_ID
 │           ├── openrouter.ts         # ★ v3 · OpenRouter 客户端封装（response-healing 插件）
 │           ├── schemas.ts            # ★ v3 · Zod schemas（Classify/Score/Summary）+ AiEnrichedFields 类型
-│           ├── pipeline.ts           # ★ v3 · processBatch 编排（classify→summarize→score 串行）
+│           ├── pipeline.ts           # ★ v6 修改 · 增加模块级 currentProgress + getCurrentProgress（供 status route 读）
 │           ├── alert-match.ts        # ★ v3 · 订阅规则匹配 + Alert 创建/更新
 │           └── prompts/
 │               ├── classify.ts      # ★ v3 · category + tags
@@ -185,6 +186,7 @@ ai-Hotspot monitoring/
 | **3 · AI Pipeline** | ✅ **v3 完成** | classify + summarize + score 三链（**跳过 dedupe**）+ alert-match + `/api/process` + 前端按钮 |
 | **2.X · 信息丰富度广度** | ✅ **v4 完成** | Google News 7 路多类目 + 详情页 + keyPoints/entities/processedAt 字段 + 相关推荐 |
 | **2.Y · 信息流交互修复 + 科技过滤** | ✅ **v5 完成** | 5 种排序差异化（hotness/importance/relevance/2 时间）+ time 窗口生效 + relevance 需 keyword + 科技相关性源头过滤（tech-filter + 5 scrapers 收紧 + 清理脚本，DB 710→337） |
+| **2.Z · UX 优化第一波（词表 + 统计卡 + 一键按钮）** | ✅ **v6 完成** | tech-filter 扩到 ~295（+53 工程/AI 术语，删 research） + 首页"监控词"换"AI 24h 覆盖率"卡 + 一键「扫描+AI」按钮（chevron 下拉 3 选项）+ `/api/process/status` 进度轮询（2s polling） |
 | 4 · 用户认证 UI + Dashboard | ⏳ **下一步** | 现在 `/login` `/dashboard` 还是占位 |
 | 5 · 定时任务 + 预警 + 设置 | ⏳ | 模型动态切换在这里做 |
 | 6 · 集成测试 + 验收 | ⏳ | 网页版正式 release |
@@ -298,6 +300,10 @@ ai-Hotspot monitoring/
 | **D-024** | **v5 · 信息流加 time 窗口；cred 仅接收参数不过滤** | time（1h/6h/24h/7d）必须前后端都支持，之前前端 state 改了但参数没传；cred 暂留占位，等未来"平台可靠性分层"再启用 |
 | **D-025** | **v5 · 科技相关性源头过滤（不入库非科技）** | 用户要求"信息都跟科技相关"，采用思路 3 混合：weibo/zhihu 标题关键词白名单 / bilibili tname 分区白名单（科技+知识） / google-news 删 finance+society 2 路 / hackernews topstories 软过滤；前端不加 toggle，全靠源头过滤 |
 | **D-026** | **v5 · 清理脚本信任 5 平台（github/infoq/reddit/hackernews/twitter）** | HN/Twitter 历史里有 ~10% 政经/科普内容，但关键词表对英文工程术语（C compiler / encryption / bytecode / Codex / Grok）覆盖不全，强删会误杀 ~50%；统一信任避免误杀，只清理 weibo/zhihu/bilibili/googlenews 4 个噪音源（710→337，0% 误杀） |
+| **D-027** | **v6 · tech-filter 词表扩展到 ~295 词 + 移除 "research"** | 修复 D-026 暴露的"英文工程术语覆盖不足"问题。新增 31 工程术语 + 17 AI/数据术语 + 5 短词（MoE/RLHF/CUDA/SLAM/JAX），刻意剔除 framework/kernel/container/attention/gradient/research 等普通英语高频词避免误命中；同时把原表里的 "research" 删掉（"The research found ..." 类普通句会被命中）。验证：12 正样本全命中 + 12 负样本 0 误命中 |
+| **D-028** | **v6 · 首页统计卡"监控词" → "AI 24h 覆盖率"** | "监控词"长期为 0（Phase 5 才有数据），信息密度浪费。换成"最近 24h 新增 HotSpot 中已被 AI 处理的比例"，对操作者更有指导意义。分母选 last_24h（用户在 AskQuestion 选定） |
+| **D-029** | **v6 · 一键扫描+AI 按钮（主按钮 + chevron 下拉）+ 进度轮询** | 原"立即扫描"+"AI 处理"两个按钮链长。改成主按钮一键全套 + 下拉拆 3 选项（仅扫描/仅 AI/一键全套）；进度量化用 polling 方案（用户在 AskQuestion 选定）：pipeline.ts 维护模块级 `currentProgress`，前端 `phase === 'processing'` 时每 2s 拉一次 `/api/process/status`，按钮文案变成"处理 12/20"，Hero 区显示当前标题 |
+| **D-030** | **v6 · AI 进度状态用模块级内存变量（非 Redis/DB）** | 本地 dev 单实例足够；Vercel 部署时需迁。代码注释里标 `TODO Phase 6: move to persistent store`。Next.js dev 热重载会重置进度但不影响正常使用（重载时主请求也会被打断） |
 
 ---
 
@@ -354,39 +360,41 @@ ai-Hotspot monitoring/
 
 ---
 
-## 8. 数据库现状（2026-05-26 21:30 快照 · v5 清理后）
+## 8. 数据库现状（2026-05-26 23:30 快照 · v6 完成后）
 
 ```
-HotSpotSource 分布（337 条 HotSpot · 较 v4 522 条减少是因 v5 清理掉 373 条非科技数据）：
-  googlenews    79   ← v5 删 finance/society 路后，旧多类目数据仍存
-  twitter       71   ← 信任不动
-  hackernews    54   ← 信任不动；topstories 软过滤新生效
-  reddit        50
+HotSpotSource 分布（365 条 HotSpot · v5 337 → v6 365，新增 28 条主要来自后续抓取）：
+  googlenews    90   ← +11
+  twitter       78   ← +7  信任不动
+  hackernews    55   ← +1  信任不动；topstories 软过滤生效
+  reddit        55   ← +5
   infoq         30
   github        23
-  zhihu         15   ← v5 从 66 → 15（命中科技关键词的）
-  weibo          9   ← v5 从 119 → 9（命中科技关键词的）
-  bilibili       6   ← v5 从 78 → 6（科技/知识分区的）
+  zhihu         17   ← v6 新加词命中工程术语标题 +2
+  weibo         11   ← +2
+  bilibili       6
 
-HotSpot 字段填充情况（清理后比例提高）：
-  HotSpot.score:           ~10 条（手动跑过 AI 处理的）
-  HotSpot.engagementScore: ~280 条
-  HotSpot.summary:         ~10 条
-  HotSpot.keyPoints:       ~10 条
-  HotSpot.entities:        ~10 条
-  HotSpot.processedAt:     ~10 条
+HotSpot 字段填充情况：
+  HotSpot.processedAt 非空: 71 条（19.5% 已 AI 处理）
+  aiCoverage24h:           71 / 365 = 19.5%（前端"AI 处理覆盖"卡显示）
+  HotSpot.score > 0:       71 条
+  HotSpot.summary 非空:     71 条
+  HotSpot.keyPoints / entities: 71 条
+  HotSpot.engagementScore:  ~290+ 条（多数）
 
 User             = 1 条（admin@nexus.local / admin12345 · 默认模型 deepseek/deepseek-v3.2）
 Subscription     = 0 条（Phase 5 才会出现）
 Alert            = 0 条
 IngestLog        持续累积（每次 ingest 一条 per 平台）
 
-注：要让前端"看上去丰富"，建议演示前手动跑 20-30 条 AI 处理：
-  Invoke-WebRequest -Uri 'http://localhost:3000/api/process?limit=20&scope=unprocessed' `
-    -Method POST -Headers @{Authorization='Bearer dev-cron-secret-please-replace-1234567890'}
+注：v6 之后前端推荐用顶部"扫描+AI"主按钮（一键全套，含进度量化）：
+  - 主按钮：先 /api/ingest，再 /api/process?limit=20&scope=unprocessed
+  - 进度：前端每 2s 轮询 /api/process/status，按钮显示"处理 12/20"
+  - 想拆开执行：点 chevron 下拉，选"仅扫描" / "仅 AI 处理" / "一键全套"
 
-注 2：v5 之后每次 ingest 入库都会被 tech-filter 过滤，weibo/zhihu 每次新增 0-8 条，
-bilibili 0-5 条，是正常的"低召回 + 高质量"状态。不必担心数量变少。
+注 2：v5 之后每次 ingest 入库都会被 tech-filter 过滤；v6 词表扩到 ~295，
+对英文工程术语（compiler/encryption/postgres/RAG 等）召回大幅提升，
+weibo/zhihu/bilibili 仍然是"低召回 + 高质量"状态，不必担心数量变少。
 ```
 
 ---
@@ -416,7 +424,7 @@ npm run type-check
 # 2) 启动 dev（如未启动）
 npm run dev
 
-# 3) E2E 测试 —— 55 项 PASS（含 AI 静态/路由 + 详情页 + 相关推荐）
+# 3) E2E 测试 —— 62 项 PASS（v5 61 + v6 新增 1 项 TechFilter v6 词表正样本）
 npx tsx scripts/e2e-test.ts
 # 想跑真实 AI 集成：
 # $env:RUN_AI_TESTS=1; npx tsx scripts/e2e-test.ts; Remove-Item env:RUN_AI_TESTS
@@ -457,6 +465,9 @@ npx tsx scripts/debug-ai-smoke.ts     # AI 链 smoke（验证 OpenRouter + 3 链
 ### 最近 commit 历史（HEAD 倒序）
 
 ```
+61d9de4 feat(ui): 一键扫描+AI 按钮 + /api/process/status 进度轮询    ← v6 任务 3（T2）
+1831d6c feat(ui): 首页「监控词」统计卡换为「AI 24h 覆盖率」           ← v6 任务 2（T3）
+2d23ce0 feat(tech-filter): 扩展词表到 ~295（+53 工程/AI 术语，删 research 防误命中）  ← v6 任务 1（T1）
 6d4bf79 chore(scripts): 一次性清理历史非科技 HotSpot 脚本             ← v5 任务 3
 185b06c feat(scrapers): 科技相关性源头过滤（让信息都跟科技相关）        ← v5 任务 2
 eb95b11 fix(hotspots): 5 种排序真正差异化 + time 筛选生效 + relevance 需 keyword  ← v5 任务 1
@@ -503,7 +514,17 @@ b0f77d5 chore: 初始化 HotPulse 项目骨架（Phase 1+2 完成）            
 
 ## 12. 待办（下一步候选方向）
 
-### Phase 4：用户认证 UI + Dashboard（**下一个推荐方向**）
+### **★ 信息源可靠性硬底层（v6 商讨过但未做，强烈推荐先做）**
+
+来自 v6 用户原话"让信息源更可靠"。v6 只挑了 S5（词表扩展），剩下的硬底层全部留给下一轮：
+
+1. **S1 · HTTP 重试机制**（`src/lib/scrapers/http.ts`）—— `fetchWithTimeout` 加 exponential backoff，仅重试 5xx / 429 / timeout / 网络错误；4xx 业务错误不重试；默认重试 2 次（间隔 800ms / 2000ms）。**根因**：当前单次失败 = 该源整轮 0 条，与 DESIGN.md §2.3 承诺的"单源失败 3 次 → 暂停 30 分钟"明显有差距
+2. **S2 · 平台熔断器**（新建 `src/lib/scrapers/circuit-breaker.ts`）—— 连续 3 次 failed 进入 15 分钟 cooldown；冷却期内 `runOne` 直接返回 `{ status: 'cooled', items: [] }`，节省请求 + 限流额度；admin 面板和主页可视化"剩余冷却时间"
+3. **S3 · Firecrawl 兜底接入**（新建 `src/lib/scrapers/firecrawl-fallback.ts`）—— DESIGN.md §2.1 承诺过、`FIRECRAWL_API_KEY` 字段已在 `.env`，但代码从未启用；主+备策略都失败时调 Firecrawl scrape；单源每天上限 5 次防费用失控；优先服务 weibo/zhihu/bilibili/github 这类 HTML 源
+4. **S4 · 平台 trustTier 分层**（用户 v6 选了 `custom` 待讨论）—— `src/lib/platforms.ts` 加 `trustTier: 1 | 2 | 3` 字段；`HotItemCard` 当前 `credibility="trusted"` **硬编码**（`src/app/page.tsx:580`）所有卡都显示"可信"，是严重误导；`cred` 筛选目前是占位 UI（D-024）
+5. **次要 · 主页 9 平台健康灯**（U2 v6 未做）—— Hero 下方加 9 个圆点（绿=成功 / 橙=partial / 红=failed-or-cooled / 灰=未抓取），hover 显示"近 5 次 ✓✓✗✓✓ · 平均 1.2s"
+
+### Phase 4：用户认证 UI + Dashboard
 
 需要做：
 
@@ -515,6 +536,7 @@ b0f77d5 chore: 初始化 HotPulse 项目骨架（Phase 1+2 完成）            
 3. 顶部导航加用户头像/退出按钮
 4. 中间件保护 `/dashboard` 路由（未登录跳 `/login`）
 5. e2e-test.ts 加用户登录后访问 `/dashboard` 用例
+6. **同步把 `BEARER = "dev-cron-secret-..."` 硬编码从前端去掉**（`page.tsx`/`admin/ingest/page.tsx`），改用同源 cookie / NextAuth session
 
 ### Phase 5：定时任务 + 预警通知 + 设置（用户已暂缓 AI 自动触发）
 
@@ -908,16 +930,131 @@ b0f77d5 chore: 初始化 HotPulse 项目骨架（Phase 1+2 完成）            
 
 ---
 
-## 19. 入口参考
+## 19. v6 对话做的主要事 · UX 优化第一波（commits `2d23ce0..61d9de4`）
+
+> 用户原话："从用户的体验角度来看，有哪些优化的点。请你思考合理的实现方案，让我的信息源更可靠。"
+>
+> AI 给出 3 梯度方案（梯度 1 信息源可靠性硬底层 / 梯度 2 UX 细节 / 梯度 3 大改动）。用户选 **只做梯度 1 + 跨选梯度 2 个别项**：
+> - 梯度 1 范围里只选 **S5 词表扩展**（S1 重试 / S2 熔断 / S3 Firecrawl 全部暂缓）
+> - 梯度 2 范围选 **U1 统计卡换 AI 覆盖率** + **U3 一键扫描+AI 按钮 + 进度量化**
+> - **trustTier 分层**：用户选 `custom` 表示有别的分法，本期不做（D-024 占位继续保留）
+
+### 任务 1（T1）：tech-filter 词表扩展（commit `2d23ce0`）
+
+#### 背景
+
+v5 清理脚本（D-026）暴露过"英文工程术语覆盖不足"问题——HN/Twitter 待删数据里 50-70% 其实是真科技（C compiler / Twilio / bytecode / Codex / Grok），临时方案是把这两个源加入信任白名单。v6 从根本上补齐词表。
+
+#### 改动
+
+- `src/lib/tech-filter.ts`：
+  - `EN_SHORT_KEYWORDS` +5：`MoE / RLHF / CUDA / SLAM / JAX`（≤4 字母仍用 `\b...\b` 边界）
+  - `EN_LONG_KEYWORDS` +48：
+    - 工程术语 31 个：compiler / encryption / bytecode / firmware / runtime / database / parser / serverless / cybersecurity / debugging / refactor / wireless / hashing / microservice / observability / devops / ci/cd / api gateway / message queue / redis / postgres / graphql / webhook / benchmark / bandwidth / latency / throughput / scalability / open source / stack overflow / oauth / hipaa
+    - AI/数据术语 17 个：langchain / vllm / fine-tuning / fine tuning / prompt engineering / tokenizer / context window / backpropagation / vector database / pinecone / weaviate / qdrant / chromadb / knowledge graph / agentic / quantization / jupyter
+  - `EN_LONG_KEYWORDS` **删 1 词** `research` —— 普通英语高频（"The research found ..."）；原表里就有，验证脚本暴露后顺手清掉
+  - 关键决策（详见 D-027）：刻意**剔除** framework / kernel / container / protocol / orchestration / distributed / resilience / optimization / attention / gradient 等普通英语高频词
+  - 词表总数：v5 ~150 → v6 ~295（cn 108 + enShort 40 + enLong 147）
+- `scripts/e2e-test.ts`：新增 1 项 "v6 新增词正样本全命中"（7 条覆盖 compiler / encryption / RAG / Postgres benchmark / Kubernetes / RLHF / Pinecone+Weaviate / OAuth+Redis / GraphQL / CUDA / SLAM / observability+microservice）
+
+#### 验证
+
+- 临时验证脚本 12 正样本全命中 + 12 负样本 0 误命中（含 "He paid attention to her speech" / "The research found new insights" / "A small container with food" / "Legal framework" 等故意刁难的）
+- e2e: 61 → 62 项全通过
+- type-check ✓
+
+---
+
+### 任务 2（T3）：统计卡"监控词" → "AI 24h 覆盖率"（commit `1831d6c`）
+
+#### 改动
+
+- `src/app/api/admin/stats/route.ts`：新增 `aiCoverage24h: { total, processed, rate }` 字段。
+  - 分母 `total24h` = `firstSeenAt >= now - 24h` 且 `status=active` 的 HotSpot 数
+  - 分子 `processed24h` = 同条件 + `processedAt != null`
+  - 用户选定 `last_24h` 分母（vs all_active / last_7d / show_both）
+- `src/app/page.tsx`：
+  - `Stats` interface 同步加 `aiCoverage24h`
+  - 第 4 张统计卡（原"监控词" 绿色 + EyeIcon）换为"AI 处理覆盖"（紫色 violet + SparklesIcon）
+  - 显示主数：`{rate*100}%`（如 `15%`），hint：`{processed} / {total} 已处理 · 近 24h`；total=0 时显示 `—` + "近 24h 无新数据"
+- 保留 `keywordsCount` 字段不删，Phase 5 接订阅时可恢复展示
+
+#### 验证
+
+- API 实测返回：`{ total: 337, processed: 49, rate: 0.145 }` → 前端显示 **15%**
+- v6 收尾时 DB 已涨到 365 条，覆盖率 71/365 = **19.5%**
+
+---
+
+### 任务 3（T2）：一键「扫描+AI」按钮 + AI 进度量化（commit `61d9de4`）
+
+#### 背景
+
+原顶部两个按钮"立即扫描" + "AI 处理"操作链长（新用户不知道两者关系），且 AI 处理过程只显示"AI 处理中..."缺乏细粒度反馈。
+
+#### 改动
+
+**1. 后端进度量化（`src/lib/ai/pipeline.ts`）**
+
+- 新增 `ProgressSnapshot` 类型 + 模块级 `currentProgress` 变量 + 导出 `getCurrentProgress()`
+- `processBatch` 内部：开始时设 `running=true / total=N`；每条处理前更新 `currentTitle`（截断到 40 字）；每条结束更新 `scanned/succeeded/failed`；全部完成时 `running=false / finishedAt`
+- **D-030**：用模块级内存变量（非 DB/Redis）。本地 dev 单实例足够；代码注释里标 `TODO Phase 6: move to persistent store`
+
+**2. 新建 `src/app/api/process/status/route.ts`（GET）**
+
+- 返回当前 `ProgressSnapshot`；`cache-control: no-store`
+- 无鉴权（本地 dev 用；生产环境上线时需加 Bearer）
+
+**3. 前端按钮重构（`src/app/page.tsx` +258 / -45）**
+
+- **状态机重构**：废弃 `scanning` / `processing` 两个独立 boolean，统一用 `phase: 'idle' | 'scanning' | 'processing'`。旧名通过派生保持兼容（`const scanning = phase === 'scanning'`）
+- **3 个 trigger 函数**：`triggerScan` / `triggerAiProcess` / **新增 `triggerAll`**（先 `await /api/ingest`，再 `await /api/process?limit=20&scope=unprocessed`）
+- **按钮 UI 重设**：主按钮"扫描 + AI"（点击 = `triggerAll`，默认动作）+ 右侧 chevron 按钮（切下拉菜单 3 选项："仅扫描多源" / "仅 AI 处理" / "一键全套"）
+- **Polling effect**：`phase === 'processing'` 时启动 `setInterval(2000ms)` 拉 `/api/process/status`，按钮文案动态变成"处理 12/20"
+- **Hero 区进度详情**：`phase === 'processing'` 且 `progress.currentTitle` 时，右上"上次扫描"那块下方显示「正在处理：标题…」紫色脉冲点
+- **click-outside 关闭下拉**（document `mousedown` listener）
+- **新增 `ChevronDownIcon` SVG**
+
+#### 验证
+
+- type-check ✓ · lint ✓
+- `GET /api/process/status` 返回初始 `running: false / total: 0`（OK）
+- 真实 AI 调用未跑（避免烧 token），但所有连接点都已校验
+
+### v6 用户决策记录
+
+| 议题 | 用户选择 |
+|---|---|
+| 本期主目标 | 只做梯度 1（信息源可靠性硬底层）· 1-2 个 commit · 但实际把梯度 2 的 U1+U3 也加进来 → 共 3 个 commit |
+| 梯度 1 子项 | 只选 S5 词表扩展（S1 重试 / S2 熔断 / S3 Firecrawl / S4 trustTier 全部暂缓到下一轮）|
+| 平台 trustTier 分层 | `custom` —— 用户有别的分法，本期不做 |
+| UX 子项 | U1 统计卡换 AI 覆盖率 + U3 一键扫描+AI（含进度量化）|
+| T1 词表范围 | en_plus_data_terms（英文 40 + AI/数据 25 = ~65 词；实际去重 + 剔除普通英语高频词后落地 53）|
+| T2 按钮布局 | primary_plus_dropdown（主按钮 + 下拉 3 选项）|
+| T2 进度实现 | polling_status（轻量 polling，非 SSE 流式；2s 间隔）|
+| T3 覆盖率分母 | last_24h（不是 all_active 也不是 last_7d）|
+| Commit 拆分 | 3 个独立 commit · 顺序 T1 → T3 → T2 |
+| Push 节奏 | 每个 commit 完成立即 push |
+
+### v6 踩坑
+
+1. **新加的"普通英语高频词"会拖累过滤精度** —— 第一版我加了 "framework / kernel / container / attention / gradient / research / reasoning / distributed / resilience / optimization / protocol" 等，结果验证脚本里 "He paid attention to her speech" 命中了。**解决**：把这堆全部剔除，最终只保留专业性强的词（compiler/encryption/microservice/observability 等）；同时顺手把原表里就存在的 `research` 删掉。
+2. **`StrReplace` 在大文件多次替换时容易匹配混淆** —— v6 改 `page.tsx` 时分了 5+ 次精确替换才完成。**经验**：大量改动可以拆 1 个 StrReplace 改一处，每次匹配 5-10 行上下文确保唯一。
+3. **模块级状态变量在 Next.js 16 dev 热重载时会重置** —— 不影响功能（重载时主请求也会被打断），但要在注释里标明 Phase 6 上 Vercel 时要换 Redis/DB。
+
+---
+
+## 20. 入口参考
 
 - 详细需求 → `docs/REQUIREMENTS.md`
 - 详细技术方案 + ADR → `docs/DESIGN.md`
-- 用户验收过的测试套件 → `scripts/e2e-test.ts`（**61/61 PASS**）
+- 用户验收过的测试套件 → `scripts/e2e-test.ts`（**62/62 PASS**）
 - 本地诊断 → `scripts/debug-stats.ts` / `scripts/debug-scan.ts` / `scripts/debug-ai-smoke.ts`（不在 git）
 - 一次性清理 → `scripts/cleanup-non-tech.ts`（v5 新增，进 git，可重跑）
 - Git 规则 → `.cursor/rules/git-auto-push.mdc`
-- AI Pipeline 核心 → `src/lib/ai/`
-- 科技相关性过滤 → `src/lib/tech-filter.ts`
-- 数据源加固历史 → §15（v2）+ §16（v3）+ §17（v4）+ §18（v5）
+- AI Pipeline 核心 → `src/lib/ai/`（含 v6 新增的 `currentProgress` / `getCurrentProgress`）
+- AI 进度查询端点 → `src/app/api/process/status/route.ts`（v6 新增）
+- 科技相关性过滤 → `src/lib/tech-filter.ts`（v6 扩到 ~295）
+- 数据源加固历史 → §15（v2）+ §16（v3）+ §17（v4）+ §18（v5）+ §19（v6）
 
-**祝下一个 AI 玩得愉快 · HEAD = `6d4bf79`**
+**祝下一个 AI 玩得愉快 · HEAD = `61d9de4`**
