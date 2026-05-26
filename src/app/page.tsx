@@ -128,6 +128,8 @@ export default function HomePage() {
         platform,
         severity,
         sort,
+        time,
+        cred,
         limit: "50",
       });
       if (keyword) params.set("q", keyword);
@@ -143,7 +145,14 @@ export default function HomePage() {
     } finally {
       setLoading(false);
     }
-  }, [platform, severity, sort, keyword]);
+  }, [platform, severity, sort, time, cred, keyword]);
+
+  // 当关键词被清空且当前是「相关性」排序时，自动回退到「热度综合」
+  useEffect(() => {
+    if (sort === "relevance" && !keyword.trim()) {
+      setSort("hotness");
+    }
+  }, [sort, keyword]);
 
   useEffect(() => {
     loadAll();
@@ -435,18 +444,31 @@ export default function HomePage() {
             <span className="text-xs text-[var(--color-text-muted)] mr-1 inline-flex items-center">
               <SortIcon /> 排序
             </span>
-            {SORT_OPTIONS.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                className="pill"
-                data-active={sort === s.id}
-                onClick={() => setSort(s.id)}
-              >
-                <span className="inline-flex items-center">{s.icon}</span>
-                {s.label}
-              </button>
-            ))}
+            {SORT_OPTIONS.map((s) => {
+              const needsKeyword = s.id === "relevance";
+              const disabled = needsKeyword && !keyword.trim();
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  className="pill disabled:opacity-40 disabled:cursor-not-allowed"
+                  data-active={sort === s.id}
+                  onClick={() => {
+                    if (disabled) return;
+                    setSort(s.id);
+                  }}
+                  disabled={disabled}
+                  title={
+                    disabled
+                      ? "请先在右侧输入关键词后再使用相关性排序"
+                      : undefined
+                  }
+                >
+                  <span className="inline-flex items-center">{s.icon}</span>
+                  {s.label}
+                </button>
+              );
+            })}
             <div className="flex-1" />
             <button type="button" className="pill" data-active={filterCount > 0}>
               <FilterIcon />
