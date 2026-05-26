@@ -1,7 +1,7 @@
 # HotPulse · AI 项目交接文档
 
 > **此文档面向"下一个 AI"** —— 新开对话时让 AI 快速恢复完整项目上下文，避免重新理解或踩历史决策的坑。
-> 最后更新：2026-05-26（**v6**，含词表扩展 + AI 24h 覆盖率卡 + 一键扫描+AI 按钮 + 进度轮询）
+> 最后更新：2026-05-27（**v7**，含关键词中心 + 变体扩展 + 接入 google-news/twitter/hackernews，召回量 +22%）
 
 ---
 
@@ -15,11 +15,11 @@
 | **包名** | `ai-hotspot-monitoring`（`package.json`） |
 | **运行平台** | Windows（PowerShell），本地开发 |
 | **GitHub 仓库** | <https://github.com/dada628/ai-Hotspot-monitoring>（main 分支已托管） |
-| **当前阶段** | Phase 1+2+2.5+2.6+2.7+2.8+2.9 ✅ · **Phase 3 AI Pipeline ✅** · **Phase 2.X 详情页 + 相关推荐 + 多类目扩展 ✅** · **Phase 2.Y v5 信息流交互修复 + 科技源头过滤 ✅** · **Phase 2.Z v6 UX 优化第一波（词表/统计卡/一键按钮+进度）✅** · Phase 4 用户认证 UI 待开工 |
-| **测试** | `npx tsx scripts/e2e-test.ts` —— **62 项 PASS**（v5 61 项 + v6 新增 1 项 TechFilter v6 词表正样本） |
+| **当前阶段** | Phase 1+2+2.5+2.6+2.7+2.8+2.9 ✅ · **Phase 3 AI Pipeline ✅** · **Phase 2.X 详情页 + 相关推荐 + 多类目扩展 ✅** · **Phase 2.Y v5 信息流交互修复 + 科技源头过滤 ✅** · **Phase 2.Z v6 UX 优化第一波 ✅** · **Phase 2.AA v7 关键词中心 + 变体扩展 ✅** · Phase 4 用户认证 UI 待开工 |
+| **测试** | `npx tsx scripts/e2e-test.ts` —— **70 项 PASS**（v6 62 项 + v7 新增 8 项 Keywords 用例） |
 | **dev URL** | <http://localhost:3000> |
 | **AI 默认模型** | `deepseek/deepseek-v3.2`（OpenRouter，含 response-healing 插件） |
-| **HEAD commit** | `61d9de4` feat(ui): 一键扫描+AI 按钮 + /api/process/status 进度轮询 |
+| **HEAD commit** | `b79afb0` feat(scrapers): 接入关键词中心·google-news/twitter/hackernews 召回量 +22% |
 
 ---
 
@@ -91,7 +91,7 @@ ai-Hotspot monitoring/
 │   ├── DESIGN.md                     # ADR D-001 ~ D-012
 │   └── HANDOVER.md                   # ← 你正在读
 ├── scripts/
-│   ├── e2e-test.ts                   # ★ v6 升至 62 项（v5 61 + v6 新增 1 项 TechFilter v6 词表正样本）
+│   ├── e2e-test.ts                   # ★ v7 升至 70 项（v6 62 + v7 新增 8 项 Keywords 用例）
 │   ├── backfill-engagement-score.ts  # 一次性回填工具（公式调整后可重跑）
 │   ├── cleanup-non-tech.ts           # ★ v5 新增 · 一次性清理非科技 HotSpot（dry-run/--apply）
 │   ├── debug-stats.ts                # ★ 本地诊断脚本（已在 .gitignore，不进 git）
@@ -143,14 +143,15 @@ ai-Hotspot monitoring/
 │       │   ├── index.ts              # 注册中心（9 个 scraper）
 │       │   ├── types.ts              # Platform 类型（9 个）
 │       │   ├── http.ts
+│       │   ├── keywords.ts           # ★ v7 新增 · 关键词中心 (32 entity / 13 family) + autoVariants + buildKeywordQueries
 │       │   ├── github.ts             # GitHub trending（100% 科技，不过滤）
 │       │   ├── weibo.ts              # ★ v5 修改 · 出口套 isTechRelated（标题）
 │       │   ├── zhihu.ts              # ★ v5 修改 · 出口套 isTechRelated（标题 + excerpt）
 │       │   ├── bilibili.ts           # ★ v5 修改 · tname 分区白名单（科技 + 知识）
-│       │   ├── twitter.ts            # TwitterAPI.io（查询已限定 AI 关键词，不动）
-│       │   ├── hackernews.ts         # ★ v5 修改 · topstories 路加 isTechRelated 软过滤
+│       │   ├── twitter.ts            # ★ v7 修改 · 路数 2→3（en 拆 primary+secondary）
+│       │   ├── hackernews.ts         # ★ v7 修改 · Algolia 单路改用 (primary OR secondary) 长 OR
 │       │   ├── reddit.ts             # r/LocalLLaMA + r/MachineLearning（100% AI，不过滤）
-│       │   ├── google-news.ts       # ★ v5 收紧 · 7 路 → 5 路（删 finance/society，留 ai/tech/science）
+│       │   ├── google-news.ts       # ★ v7 修改 · AI 路 1→2（primary+secondary），总路数 5→7
 │       │   └── infoq.ts              # InfoQ 中文 RSS（100% 科技，不过滤）
 │       └── ai/                       # ★ v3 全新目录（AI Pipeline）
 │           ├── models.ts             # 7 个国产模型 + DEFAULT_MODEL_ID
@@ -187,6 +188,7 @@ ai-Hotspot monitoring/
 | **2.X · 信息丰富度广度** | ✅ **v4 完成** | Google News 7 路多类目 + 详情页 + keyPoints/entities/processedAt 字段 + 相关推荐 |
 | **2.Y · 信息流交互修复 + 科技过滤** | ✅ **v5 完成** | 5 种排序差异化（hotness/importance/relevance/2 时间）+ time 窗口生效 + relevance 需 keyword + 科技相关性源头过滤（tech-filter + 5 scrapers 收紧 + 清理脚本，DB 710→337） |
 | **2.Z · UX 优化第一波（词表 + 统计卡 + 一键按钮）** | ✅ **v6 完成** | tech-filter 扩到 ~295（+53 工程/AI 术语，删 research） + 首页"监控词"换"AI 24h 覆盖率"卡 + 一键「扫描+AI」按钮（chevron 下拉 3 选项）+ `/api/process/status` 进度轮询（2s polling） |
+| **2.AA · 关键词中心 + 变体扩展（解决 Codex 5.3 / GPT-Codex-5.3 一类死板）** | ✅ **v7 完成** | 新建 `src/lib/scrapers/keywords.ts`（32 entity / 13 family / 含 OpenAI Codex 系列 + Anthropic 4.5 + Gemini 3 + DeepSeek V3.2 + Qwen3 + Grok 4 + Kimi K2 + GLM-4.6 + 工程工具栈）+ autoVariants（空格 ↔ 连字符）+ buildKeywordQueries（primary+secondary 智能分桶）+ 接入 google-news（5→7 路）/ twitter（2→3 路）/ hackernews（合并长 OR）；召回量 +22%（365→448） |
 | 4 · 用户认证 UI + Dashboard | ⏳ **下一步** | 现在 `/login` `/dashboard` 还是占位 |
 | 5 · 定时任务 + 预警 + 设置 | ⏳ | 模型动态切换在这里做 |
 | 6 · 集成测试 + 验收 | ⏳ | 网页版正式 release |
@@ -304,6 +306,10 @@ ai-Hotspot monitoring/
 | **D-028** | **v6 · 首页统计卡"监控词" → "AI 24h 覆盖率"** | "监控词"长期为 0（Phase 5 才有数据），信息密度浪费。换成"最近 24h 新增 HotSpot 中已被 AI 处理的比例"，对操作者更有指导意义。分母选 last_24h（用户在 AskQuestion 选定） |
 | **D-029** | **v6 · 一键扫描+AI 按钮（主按钮 + chevron 下拉）+ 进度轮询** | 原"立即扫描"+"AI 处理"两个按钮链长。改成主按钮一键全套 + 下拉拆 3 选项（仅扫描/仅 AI/一键全套）；进度量化用 polling 方案（用户在 AskQuestion 选定）：pipeline.ts 维护模块级 `currentProgress`，前端 `phase === 'processing'` 时每 2s 拉一次 `/api/process/status`，按钮文案变成"处理 12/20"，Hero 区显示当前标题 |
 | **D-030** | **v6 · AI 进度状态用模块级内存变量（非 Redis/DB）** | 本地 dev 单实例足够；Vercel 部署时需迁。代码注释里标 `TODO Phase 6: move to persistent store`。Next.js dev 热重载会重置进度但不影响正常使用（重载时主请求也会被打断） |
+| **D-031** | **v7 · 关键词集中目录（keywords.ts）+ 自动空格 ↔ 连字符变体** | 用户原例"Codex 5.3 / GPT-Codex-5.3"暴露了三个搜索型 scraper 关键词死板的问题。新建集中目录而不是每个 scraper 各自维护，理由：① 维护成本低（加新模型只改一处）② 一致性好（不同源用同套词）③ 可测（autoVariants/buildKeywordQueries 全部可单元测）。autoVariants 只做"空格 ↔ 连字符"双向互换（不做大小写/缩写展开），人工 alias 仍保留掌控；版本号变体由人工列入 aliases（Q2 选 versioned） |
+| **D-032** | **v7 · smart_merge：primary（高互动门槛）+ secondary（低门槛细分变体）** | Twitter API 计次计费，全部细分模型扔到一条 query 会让小众讨论被高门槛淹没。primary 用 `min_faves:200` 保品质，secondary 用 `min_faves:50` 接受细分版本号的小众讨论。Google News 把 AI 类目从 1→2 路实现同一逻辑。HN Algolia 用嵌套 OR `(primary OR secondary)` 单路合并（Algolia 已自带 points>30 过滤） |
+| **D-033** | **v7 · "AI" 这个广义词降到 secondary** | 用户 Q6 选 demote。理由：plain "AI" 太宽（与 said/paid 字符冲突已在 v5 解决，但 query 中独占 12% 字符）；具体模型名（ChatGPT/Claude/Gemini）已足够覆盖大多数 AI 新闻，把 secondary 留给"AI agent / RAG / RLHF"等更具体的复合词更划算 |
+| **D-034** | **v7 · HN/Twitter 信任白名单保留** | v5 把 HN/Twitter 加入清理脚本信任白名单，根本原因是当时关键词覆盖不足。v6 扩词到 ~295、v7 又通过 keywords.ts 覆盖了 OpenAI Codex / Anthropic 4.5 / DeepSeek V3.2 等专业词。但保留信任白名单为防御性策略：英文工程社区还会持续出现新名词，宁可放过少量误读也别误删（cleanup-non-tech.ts 设计就是"信任优先"） |
 
 ---
 
@@ -358,29 +364,41 @@ ai-Hotspot monitoring/
 27. **PowerShell 中 `\$` 被当变量解析**：用 `npx tsx -e "...db.\$disconnect()..."` 会报 `检索不到变量"$disconnect"`。**解决**：内联 -e 改为写到临时文件 `scripts/_inspect-cleanup.ts` 跑，跑完再 Delete 删除。
 28. **B 站分区白名单收得过严会数据稀疏**：用户只勾"科技"分区时，B 站 50 条热门里平均只能命中 2-5 条；加上"知识"分区后命中 5-15 条，相对稳定。**经验**：分区白名单宁可多 1 个相关大类。
 
+### v7 新踩坑（关键词中心 + scraper 接入）
+
+29. **子串匹配 vs 词边界**：第一版 e2e 用 `zh.secondary.includes('Llama')` 检查 "Meta Llama 不应进 zh query"，结果命中 `LlamaIndex`（工具栈，lang='both' 进 zh secondary）误判失败。**解决**：改用 `/\bLlama\b|\bLLaMA\b/` 词边界正则；`\b` 在 "LlamaIndex" 的 "a→I" 处不成立，正确放过。
+
+30. **Google News URL 中 `:` 编码问题**：`when:1d` 时间窗修饰符如果整体 `encodeURIComponent` 会变成 `when%3A1d`，Google News 可能解析失败。**解决**：只对关键词部分 `encodeURIComponent`，`when:1d` 保留明文：`q=${encodeURIComponent(query)}+when:1d`。
+
+31. **Google News 把 `-` 当 NOT 运算符**：原始关键词 `GPT-Codex-5.3` 直接放入 query 会被解析为 `GPT NOT Codex NOT 5.3`。**解决**：`formatToken()` 检测到含 `-/./空格` 时自动加双引号 `"GPT-Codex-5.3"`。
+
+32. **Twitter `lang:zh` + 英文品牌名的细节**：zh query `(DeepSeek OR 深度求索 OR ...) lang:zh` 会只返回"中文 tweet 中提到 DeepSeek 或 深度求索 的"，**不会**返回英文 tweet 即使提到 DeepSeek。这是预期行为：中文用户经常混用英文品牌名，所以 zh 路保留 lang=both 实体（DeepSeek/Qwen/GLM 都进 zh primary）；纯英文实体（LLaMA/Claude Opus）只进 en 路。
+
+33. **HN Algolia 嵌套 OR 长度风险**：`(primary OR secondary)` 合并约 1400 字符。Algolia REST API 实测可处理，但接近上限。**解决**：把 `maxChars` 改为 700/各（默认 800 → 700），合并 1400 字符是安全区。再大需要分多路调。
+
 ---
 
-## 8. 数据库现状（2026-05-26 23:30 快照 · v6 完成后）
+## 8. 数据库现状（2026-05-27 00:30 快照 · v7 完成后）
 
 ```
-HotSpotSource 分布（365 条 HotSpot · v5 337 → v6 365，新增 28 条主要来自后续抓取）：
-  googlenews    90   ← +11
-  twitter       78   ← +7  信任不动
-  hackernews    55   ← +1  信任不动；topstories 软过滤生效
-  reddit        55   ← +5
+HotSpotSource 分布（448 条 HotSpot · v6 365 → v7 448，+83 条 +22% 主要来自 google-news / twitter 扩词）：
+  googlenews   137   ← +47  v7 AI 路 1→2 拆 primary+secondary
+  twitter      105   ← +27  v7 路数 2→3
+  hackernews    55   ←  0   Algolia points>30 硬过滤未变
+  reddit        63   ← +8
   infoq         30
   github        23
-  zhihu         17   ← v6 新加词命中工程术语标题 +2
-  weibo         11   ← +2
+  zhihu         17
+  weibo         12   ← +1
   bilibili       6
 
 HotSpot 字段填充情况：
-  HotSpot.processedAt 非空: 71 条（19.5% 已 AI 处理）
-  aiCoverage24h:           71 / 365 = 19.5%（前端"AI 处理覆盖"卡显示）
-  HotSpot.score > 0:       71 条
-  HotSpot.summary 非空:     71 条
-  HotSpot.keyPoints / entities: 71 条
-  HotSpot.engagementScore:  ~290+ 条（多数）
+  HotSpot.processedAt 非空: 77 条（17.2% 已 AI 处理）
+  aiCoverage24h:           77 / 424 = 18.2%（前端"AI 处理覆盖"卡显示）
+  HotSpot.score > 0:       77 条
+  HotSpot.summary 非空:     77 条
+  HotSpot.keyPoints / entities: 77 条
+  HotSpot.engagementScore:  ~360+ 条（多数）
 
 User             = 1 条（admin@nexus.local / admin12345 · 默认模型 deepseek/deepseek-v3.2）
 Subscription     = 0 条（Phase 5 才会出现）
@@ -392,9 +410,14 @@ IngestLog        持续累积（每次 ingest 一条 per 平台）
   - 进度：前端每 2s 轮询 /api/process/status，按钮显示"处理 12/20"
   - 想拆开执行：点 chevron 下拉，选"仅扫描" / "仅 AI 处理" / "一键全套"
 
-注 2：v5 之后每次 ingest 入库都会被 tech-filter 过滤；v6 词表扩到 ~295，
-对英文工程术语（compiler/encryption/postgres/RAG 等）召回大幅提升，
-weibo/zhihu/bilibili 仍然是"低召回 + 高质量"状态，不必担心数量变少。
+注 2：v5/v6 ingest 入库被 tech-filter 过滤；v7 在搜索阶段引入 keywords.ts
+进一步精准定位"细分模型版本号变体"（Codex 5.3 / GPT-Codex-5.3 / Claude Opus 4.5 等），
+召回量比 v6 提升 22%（365→448），其中 google-news +52%、twitter +35% 最显著。
+hackernews 因 Algolia points>30 硬过滤，新关键词覆盖的小众讨论本身不达阈值，
+召回未变（符合预期）。
+
+注 3：AI 覆盖率比 v6 微降（19.5% → 18.2%）是因为新增 83 条还没批量 AI 处理。
+点首页"扫描+AI"主按钮跑 limit=20 几轮即可补齐。
 ```
 
 ---
@@ -465,6 +488,9 @@ npx tsx scripts/debug-ai-smoke.ts     # AI 链 smoke（验证 OpenRouter + 3 链
 ### 最近 commit 历史（HEAD 倒序）
 
 ```
+b79afb0 feat(scrapers): 接入关键词中心·google-news/twitter/hackernews 召回量 +22%  ← v7 T2
+bf4bd8f feat(keywords): 关键词中心 + 变体扩展（解决 Codex 5.3 / GPT-Codex-5.3 一类死板问题）  ← v7 T1
+faab752 docs(handover): 补齐 v6 章节（上次 v6 三个 commit 遗漏）          ← v7 补丁
 61d9de4 feat(ui): 一键扫描+AI 按钮 + /api/process/status 进度轮询    ← v6 任务 3（T2）
 1831d6c feat(ui): 首页「监控词」统计卡换为「AI 24h 覆盖率」           ← v6 任务 2（T3）
 2d23ce0 feat(tech-filter): 扩展词表到 ~295（+53 工程/AI 术语，删 research 防误命中）  ← v6 任务 1（T1）
@@ -1044,17 +1070,130 @@ v5 清理脚本（D-026）暴露过"英文工程术语覆盖不足"问题——H
 
 ---
 
+## 21. v7 对话做的主要事 · 关键词中心 + 变体扩展（commits `bf4bd8f..b79afb0`）
+
+> 用户原话（含截图）："调用 API 搜索的关键词过于死板，其实可以搜索多个变体。比如搜索 `Codex 5.3`，同时搜索 `GPT-Codex-5.3`，可能就会得到更丰富的结果。"
+>
+> 经过完整代码盘点，定位到 3 个搜索型 scraper 用关键词请求 API 但词表死板：
+>   - google-news ai-en/ai-zh （硬编码 `AI OR LLM OR ChatGPT OR OpenAI`）
+>   - twitter en/zh（硬编码 `(AI OR LLM OR Claude OR ChatGPT OR OpenAI)`）
+>   - hackernews algolia（硬编码 `AI OR LLM OR Claude OR ChatGPT OR OpenAI OR DeepSeek`）
+>
+> 全部错过：`Codex 系列` / `o3` / `Claude Opus 4.5` / `Gemini 3` / `DeepSeek V3.2` /
+>             `Qwen3-Max` / `Grok 4` / `Llama 4` / `GLM-4.6` / `Kimi K2` / AI 工具栈
+
+### 任务 1（T1）：关键词中心 + 变体扩展（commit `bf4bd8f`）
+
+#### 改动
+
+- 新建 `src/lib/scrapers/keywords.ts`（256 行）
+  - `KEYWORD_CATALOG: Entity[]` —— **32 个 entity 覆盖 13 个 family**
+    - 国产模型：DeepSeek / Qwen / GLM / Kimi（lang='both'）+ 国产话题词（topic-zh）
+    - 国际模型：OpenAI / Anthropic / Google / xAI / Meta / Mistral
+    - AI 工具栈（tools）：LangChain / vLLM / Cursor / Copilot / Replit / Hugging Face / ComfyUI / Stable Diffusion / Midjourney
+    - 通用话题（topic-en）：LLM / AGI / RAG / MoE / RLHF / fine-tuning / prompt engineering
+    - 每个 entity 配置 `tier: 'primary' | 'secondary'` 和 `lang: 'en' | 'zh' | 'both'`
+  - `autoVariants(alias)` —— 自动生成"空格 ↔ 连字符"变体
+    例 `autoVariants("GPT-Codex-5.3")` → `["GPT-Codex-5.3", "GPT Codex 5.3"]`
+    例 `autoVariants("Codex 5.3")` → `["Codex 5.3", "Codex-5.3"]`
+  - `entityAllVariants(entity)` —— 把所有别名各自展开 autoVariants 后去重合并
+  - `buildKeywordQueries({lang, maxChars=800})` —— 返回 `{primary, secondary, meta}`
+    - primary：核心品牌名 + 主版本（高互动门槛区域）
+    - secondary：细分版本号变体 + 工具栈 + 广义话题（小众讨论区域）
+    - 双 pass 公平分配：先每个 entity 抢 1 个最短 token，再按长度灌入
+    - 特殊字符（`-` / 空格 / `.`）token 自动加双引号，避免 Google News 把 `-` 当 NOT
+- e2e-test.ts 新增 `testKeywords()` 共 8 项用例
+  - autoVariants 双向变体
+  - 目录规模断言（entity ≥ 20, family ≥ 10）
+  - en query 健康（含 ChatGPT、长度 ≤ 800）
+  - **用户原例 Codex 系列变体覆盖 ≥ 3 种**（核心断言）
+  - zh query 国产模型 + 话题词齐 + 排除 Meta Llama（词边界正则）
+  - maxChars=100 极压力下 primary 仍非空
+  - entityAllVariants 展开去重
+
+#### 实测产出
+
+- EN primary：34 token / 368 字
+- EN secondary：62 token / 787 字
+- Codex 系列变体全在：Codex / GPT-Codex / Codex 5.3 / GPT-Codex-5.3 / GPT Codex 5.3
+- type-check ✓ · e2e: 62 → 70 PASS（+8）
+
+---
+
+### 任务 2（T2）：接入 3 个 scraper（commit `b79afb0`）
+
+#### 改动
+
+- `src/lib/scrapers/google-news.ts`
+  - AI 类目从 1 路 → 2 路（primary + secondary）
+  - `ai-en-primary` / `ai-en-secondary` / `ai-zh-primary` / `ai-zh-secondary`
+  - tech-en / tech-zh / science-en 保持
+  - 总路数：5 → 7；PER_QUERY 10→8；TOTAL_LIMIT 32→36
+  - URL 编码：关键词部分用 `encodeURIComponent`，`when:1d` 时间窗保留明文
+
+- `src/lib/scrapers/twitter.ts`
+  - en 拆 primary（`min_faves:200` 高门槛保品质） + secondary（`min_faves:50` 接受细分版本号小众讨论）
+  - zh 保留 1 路（lang='both' 已纳入国产模型，zh secondary 内容少不拆）
+  - 总路数：2 → 3（TwitterAPI.io 计次 +50%，用户已确认）
+  - PER_QUERY 12→10；TOTAL_LIMIT 20→24
+
+- `src/lib/scrapers/hackernews.ts`
+  - Algolia AI 单路改用 `(primary OR secondary)` 长 OR query
+  - `maxChars=700` × 2 → 合并约 1400 字符（Algolia URL 安全区）
+  - 保留 `created_at_i>7d` 和 `points>30` 过滤不变
+
+#### 实测召回（v6 → v7，DB 累积）
+
+| Platform | v6 累积 | v7 当前 | 增量 |
+|---|---|---|---|
+| googlenews | 90 | **137** | +47 (+52%) |
+| twitter | 78 | **105** | +27 (+35%) |
+| hackernews | 55 | 55 | 持平（points>30 严过滤）|
+| 其他 6 源 | 142 | 151 | 不受影响 |
+| **总计** | **365** | **448** | **+83 (+22%)** |
+
+#### 验证
+
+- type-check ✓
+- e2e 70/70 PASS（含 9 scraper 隔离测试全 success）
+- POST /api/ingest 全平台跑通；3 个修改的 scraper status=success
+- ai-en-secondary 实际命中 `Codex` / `GPT-Codex-5.3` / `Claude Opus 4.5` / `Gemini 3` 等变体
+
+### v7 用户决策记录
+
+| 议题 | 用户选择 |
+|---|---|
+| 覆盖范围（Q1） | C · 模型 + 通用话题 + 工程工具栈（~150 词，实际落地 32 entity） |
+| 变体写法粒度（Q2） | B · 加版本号变体（约 6 种/模型，命中更精准） |
+| 查询合成策略（Q3） | C · smart_merge（primary 高门槛 + secondary 低门槛 + zh 单路） |
+| 应用范围（Q4） | A · 三个 scraper 全改（google-news + twitter + hackernews） |
+| Twitter secondary 门槛（Q5） | A · min_faves:50（细分版本号本身讨论量少） |
+| "AI" 这个广义词（Q6） | B · 降到 secondary（让 primary 给具体模型名让位） |
+| 真实 ingest 验证（Q7） | A · 跑（验证召回有产出变化） |
+| Commit 拆分（Q8） | A · 拆 2 个（T1 关键词中心 + e2e、T2 scraper 接入） |
+| HANDOVER v6 遗漏处理 | A · 单独 commit 作为补丁（faab752） |
+
+### v7 踩坑
+
+1. **子串匹配 vs 词边界**：第一版 e2e `zh.secondary.includes('Llama')` 误命中 `LlamaIndex`（工具栈）。**解决**：改用 `/\bLlama\b/` 词边界正则。
+2. **Google News `:` 编码问题**：整体 `encodeURIComponent` 会把 `when:1d` 变成 `when%3A1d`。**解决**：只对关键词部分 encode，`when:1d` 保留明文。
+3. **Google News `-` 被当 NOT 运算符**：`GPT-Codex-5.3` 会被解析为 `GPT NOT Codex NOT 5.3`。**解决**：`formatToken()` 检测特殊字符自动加双引号 `"GPT-Codex-5.3"`。
+4. **HN Algolia 长 OR query 长度风险**：合并 `(primary OR secondary)` 约 1400 字符接近上限。**解决**：把 `maxChars` 设为 700/各，留足安全区。
+
+---
+
 ## 20. 入口参考
 
 - 详细需求 → `docs/REQUIREMENTS.md`
 - 详细技术方案 + ADR → `docs/DESIGN.md`
-- 用户验收过的测试套件 → `scripts/e2e-test.ts`（**62/62 PASS**）
+- 用户验收过的测试套件 → `scripts/e2e-test.ts`（**70/70 PASS**）
 - 本地诊断 → `scripts/debug-stats.ts` / `scripts/debug-scan.ts` / `scripts/debug-ai-smoke.ts`（不在 git）
 - 一次性清理 → `scripts/cleanup-non-tech.ts`（v5 新增，进 git，可重跑）
 - Git 规则 → `.cursor/rules/git-auto-push.mdc`
 - AI Pipeline 核心 → `src/lib/ai/`（含 v6 新增的 `currentProgress` / `getCurrentProgress`）
 - AI 进度查询端点 → `src/app/api/process/status/route.ts`（v6 新增）
 - 科技相关性过滤 → `src/lib/tech-filter.ts`（v6 扩到 ~295）
-- 数据源加固历史 → §15（v2）+ §16（v3）+ §17（v4）+ §18（v5）+ §19（v6）
+- **关键词中心 → `src/lib/scrapers/keywords.ts`（v7 新增，32 entity / 13 family）**
+- 数据源加固历史 → §15（v2）+ §16（v3）+ §17（v4）+ §18（v5）+ §19（v6）+ §21（v7）
 
-**祝下一个 AI 玩得愉快 · HEAD = `61d9de4`**
+**祝下一个 AI 玩得愉快 · HEAD = `b79afb0`**
