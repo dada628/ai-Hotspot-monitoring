@@ -36,6 +36,12 @@ interface Stats {
   todayNew: number;
   urgentCount: number;
   keywordsCount: number;
+  /** v6 新增：近 24h AI 处理覆盖率（取代"监控词"统计卡） */
+  aiCoverage24h: {
+    total: number;
+    processed: number;
+    rate: number;
+  };
 }
 
 interface IngestSummary {
@@ -416,11 +422,19 @@ export default function HomePage() {
             loading={loading && !stats}
           />
           <StatCard
-            icon={<EyeIcon />}
-            label="监控词"
-            value={stats?.keywordsCount ?? 0}
-            hint="启用的订阅"
-            tone="green"
+            icon={<SparklesIcon />}
+            label="AI 处理覆盖"
+            value={(() => {
+              const cov = stats?.aiCoverage24h;
+              if (!cov || cov.total === 0) return "—";
+              return `${Math.round(cov.rate * 100)}%`;
+            })()}
+            hint={(() => {
+              const cov = stats?.aiCoverage24h;
+              if (!cov || cov.total === 0) return "近 24h 无新数据";
+              return `${cov.processed} / ${cov.total} 已处理 · 近 24h`;
+            })()}
+            tone="violet"
             loading={loading && !stats}
           />
         </section>
