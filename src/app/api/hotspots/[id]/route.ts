@@ -44,6 +44,7 @@ export async function GET(_req: Request, ctx: RouteContext) {
     keyPoints: h.keyPoints,
     entities: h.entities,
     processedAt: h.processedAt?.toISOString() ?? null,
+    publishedAt: h.publishedAt?.toISOString() ?? null,
     firstSeenAt: h.firstSeenAt.toISOString(),
     updatedAt: h.updatedAt.toISOString(),
     sources: h.sources.map((s) => ({
@@ -52,6 +53,7 @@ export async function GET(_req: Request, ctx: RouteContext) {
       url: s.url,
       rawTitle: s.rawTitle,
       metric: s.metric,
+      publishedAt: s.publishedAt?.toISOString() ?? null,
       fetchedAt: s.fetchedAt.toISOString(),
     })),
   });

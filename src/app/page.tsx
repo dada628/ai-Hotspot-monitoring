@@ -30,6 +30,7 @@ interface HotspotSource {
   url: string;
   metric: string;
   rawTitle: string;
+  publishedAt: string | null;
 }
 interface Hotspot {
   id: string;
@@ -37,8 +38,11 @@ interface Hotspot {
   summary: string | null;
   score: number;
   engagementScore: number;
+  trendVelocity: number | null;
   category: string | null;
   tags: string;
+  processedAt: string | null;
+  publishedAt: string | null;
   firstSeenAt: string;
   updatedAt: string;
   sources: HotspotSource[];
@@ -772,13 +776,19 @@ export default function HomePage() {
                     id={item.id}
                     title={item.title}
                     summary={item.summary}
+                    isAiSummary={item.processedAt != null}
                     score={effectiveScore}
                     category={item.category}
                     tags={tags}
+                    publishedAt={item.publishedAt}
                     updatedAt={item.updatedAt}
+                    trendVelocity={item.trendVelocity}
                     sources={item.sources.map((s) => ({
-                      ...s,
-                      metric: formatMetric(s.platform, parseMetric(s.metric)),
+                      platform: s.platform,
+                      url: s.url,
+                      rawTitle: s.rawTitle,
+                      publishedAt: s.publishedAt,
+                      metric: parseMetric(s.metric),
                     }))}
                     severity={sev}
                     credibility="trusted"
@@ -827,23 +837,6 @@ function scoreToSeverity(
   if (score >= 70) return "high";
   if (score >= 40) return "medium";
   return "low";
-}
-
-function formatMetric(platform: string, m: Record<string, unknown>): string {
-  const fmt = (n: number) => {
-    if (n >= 10000) return `${(n / 10000).toFixed(1)}万`;
-    return n.toLocaleString();
-  };
-  if (platform === "weibo" && typeof m.heat === "number") return fmt(m.heat);
-  if (platform === "zhihu" && typeof m.heat === "number") return fmt(m.heat);
-  if (platform === "bilibili" && typeof m.views === "number") return fmt(m.views);
-  if (platform === "github" && typeof m.stars === "number")
-    return `★ ${m.stars}`;
-  if (platform === "twitter" && typeof m.likes === "number")
-    return `♥ ${fmt(m.likes)}`;
-  if (platform === "hackernews" && typeof m.score === "number")
-    return `▲ ${m.score}`;
-  return "";
 }
 
 function computeHotness(sources: HotspotSource[], score: number): number {

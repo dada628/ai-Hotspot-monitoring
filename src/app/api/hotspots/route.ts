@@ -127,7 +127,13 @@ export async function GET(req: Request) {
       take: limit,
       include: {
         sources: {
-          select: { platform: true, url: true, metric: true, rawTitle: true },
+          select: {
+            platform: true,
+            url: true,
+            metric: true,
+            rawTitle: true,
+            publishedAt: true,
+          },
         },
       },
     });
@@ -153,7 +159,13 @@ export async function GET(req: Request) {
     take: POOL_LIMIT,
     include: {
       sources: {
-        select: { platform: true, url: true, metric: true, rawTitle: true },
+        select: {
+          platform: true,
+          url: true,
+          metric: true,
+          rawTitle: true,
+          publishedAt: true,
+        },
       },
     },
   });
@@ -213,7 +225,13 @@ export async function GET(req: Request) {
 type HotSpotWithSources = Prisma.HotSpotGetPayload<{
   include: {
     sources: {
-      select: { platform: true; url: true; metric: true; rawTitle: true };
+      select: {
+        platform: true;
+        url: true;
+        metric: true;
+        rawTitle: true;
+        publishedAt: true;
+      };
     };
   };
 }>;
@@ -225,8 +243,11 @@ function serializeItem(h: HotSpotWithSources) {
     summary: h.summary,
     score: h.score,
     engagementScore: h.engagementScore,
+    trendVelocity: h.trendVelocity,
     category: h.category,
     tags: h.tags,
+    processedAt: h.processedAt?.toISOString() ?? null,
+    publishedAt: h.publishedAt?.toISOString() ?? null,
     firstSeenAt: h.firstSeenAt.toISOString(),
     updatedAt: h.updatedAt.toISOString(),
     sources: h.sources.map((s) => ({
@@ -234,6 +255,7 @@ function serializeItem(h: HotSpotWithSources) {
       url: s.url,
       metric: s.metric,
       rawTitle: s.rawTitle,
+      publishedAt: s.publishedAt?.toISOString() ?? null,
     })),
   };
 }
