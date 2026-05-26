@@ -15,6 +15,7 @@ interface HotSpotSource {
   url: string;
   rawTitle: string;
   metric: string;
+  publishedAt: string | null;
   fetchedAt: string;
 }
 
@@ -30,6 +31,7 @@ interface HotSpotDetail {
   keyPoints: string; // JSON
   entities: string; // JSON
   processedAt: string | null;
+  publishedAt: string | null;
   firstSeenAt: string;
   updatedAt: string;
   sources: HotSpotSource[];
@@ -227,6 +229,38 @@ function DetailContent({
             {data.title}
           </h1>
 
+          {/* v8 新增：发布时间 / 抓取时间 二排小字 */}
+          <div className="mt-3 flex items-center gap-4 text-xs text-[var(--color-text-muted)] flex-wrap">
+            {data.publishedAt ? (
+              <span className="inline-flex items-center gap-1.5">
+                <CalendarIcon />
+                <span>
+                  原始发布：
+                  <span className="text-[var(--color-text)] tabular-nums">
+                    {fmtDateTime(data.publishedAt)}
+                  </span>
+                  <span className="ml-1.5 opacity-80">
+                    ({timeAgoZh(data.publishedAt)})
+                  </span>
+                </span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 opacity-70">
+                <CalendarIcon />
+                <span>原始发布：—（该平台未提供）</span>
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1.5">
+              <RefreshSmallIcon />
+              <span>
+                最近抓取：
+                <span className="text-[var(--color-text)] tabular-nums">
+                  {fmtDateTime(data.updatedAt)}
+                </span>
+              </span>
+            </span>
+          </div>
+
           {/* 评分与时间维度 */}
           <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
             <ScoreCell
@@ -380,7 +414,11 @@ function DetailContent({
 
       {/* ===== 元数据时间 ===== */}
       <section className="glass p-5 text-xs text-[var(--color-text-muted)]">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <MetaItem
+            label="原始发布"
+            value={data.publishedAt ? fmtDateTime(data.publishedAt) : "—"}
+          />
           <MetaItem label="首次发现" value={fmtDateTime(data.firstSeenAt)} />
           <MetaItem label="最近更新" value={fmtDateTime(data.updatedAt)} />
           <MetaItem
@@ -490,8 +528,25 @@ function SourceRow({ source }: { source: HotSpotSource }) {
             <span>{metricDisplay}</span>
           </>
         )}
+        {source.publishedAt && (
+          <>
+            <span>·</span>
+            <span
+              className="inline-flex items-center gap-1"
+              title={`平台发布时间 ${fmtDateTime(source.publishedAt)}`}
+            >
+              <CalendarTinyIcon />
+              发布 {timeAgoZh(source.publishedAt)}
+            </span>
+          </>
+        )}
         <span>·</span>
-        <span className="tabular-nums">{fmtTime(source.fetchedAt)}</span>
+        <span
+          className="tabular-nums"
+          title={`抓取时间 ${fmtDateTime(source.fetchedAt)}`}
+        >
+          抓取 {timeAgoZh(source.fetchedAt)}
+        </span>
       </div>
     </a>
   );
@@ -620,9 +675,23 @@ function fmtDateTime(iso: string): string {
     minute: "2-digit",
   });
 }
-function fmtTime(iso: string): string {
+
+function timeAgoZh(iso: string | null | undefined): string {
+  if (!iso) return "";
   const d = new Date(iso);
-  return d.toLocaleString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  if (Number.isNaN(d.getTime())) return "";
+  const diff = Date.now() - d.getTime();
+  if (diff < 0) return "刚刚";
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 1) return "刚刚";
+  if (minutes < 60) return `${minutes}m 前`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h 前`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d 前`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}月前`;
+  return `${Math.floor(days / 365)}年前`;
 }
 
 function formatMetric(platform: string, m: Record<string, unknown>): string {
@@ -827,6 +896,35 @@ function DotIcon() {
   return (
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
       <circle cx="12" cy="12" r="4" fill="currentColor" />
+    </svg>
+  );
+}
+function CalendarIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+      <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="1.7" />
+      <path d="M3 9H21M8 3V7M16 3V7" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+function CalendarTinyIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+      <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="2" />
+      <path d="M3 9H21M8 3V7M16 3V7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+function RefreshSmallIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M3 12C3 7.03 7.03 3 12 3C16 3 19.4 5.66 20.6 9.3M21 4V9H16M21 12C21 16.97 16.97 21 12 21C8 21 4.6 18.34 3.4 14.7M3 20V15H8"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

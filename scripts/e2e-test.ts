@@ -32,6 +32,10 @@ import {
   KEYWORD_CATALOG_META,
 } from "../src/lib/scrapers/keywords";
 import {
+  extractPublishedAt,
+  pickEarliestPublishedAt,
+} from "../src/lib/published-at";
+import {
   ClassifySchema,
   ScoreSchema,
   SummarySchema,
@@ -215,6 +219,7 @@ async function testHotSpotDetailApi() {
       "keyPoints",
       "entities",
       "processedAt",
+      "publishedAt",
       "firstSeenAt",
       "updatedAt",
       "sources",
@@ -227,6 +232,14 @@ async function testHotSpotDetailApi() {
           `${expected.length} 字段全有 · sources=${data.sources.length}`,
         )
       : fail(g, "GET 单条返回完整字段", `缺: ${missing.join(",")}`);
+
+    // 4) v8 新增：source 也透传 publishedAt 字段
+    const srcWithPubField = data.sources.every(
+      (s: Record<string, unknown>) => "publishedAt" in s,
+    );
+    srcWithPubField
+      ? pass(g, "source 透传 publishedAt 字段", `${data.sources.length} 条 source 全部含字段`)
+      : fail(g, "source 透传 publishedAt 字段", "存在 source 缺 publishedAt 键");
 
     // 2) tags / keyPoints / entities 都是合法 JSON
     let jsonOk = true;
@@ -324,6 +337,121 @@ async function testRelatedApi() {
     allAboveMin
       ? pass(g, "所有 items relevance ≥ 0.05", "✓")
       : fail(g, "所有 items relevance ≥ 0.05", "存在低于阈值的项");
+  });
+}
+
+async function testPublishedAt() {
+  await group("发布时间字段 · 解析 + API 透传", async () => {
+    const g = "PublishedAt";
+
+    // ----- 1) extractPublishedAt 平台映射 -----
+    const ts = 1716700800; // 2024-05-26 08:00 UTC（一个明确的旧时间点）
+    const iso = new Date(ts * 1000).toISOString();
+
+    const cases: Array<{
+      platform: Parameters<typeof extractPublishedAt>[0];
+      metric: Record<string, unknown>;
+      expectMs: number | null;
+      desc: string;
+    }> = [
+      { platform: "googlenews", metric: { published: iso }, expectMs: ts * 1000, desc: "googlenews ISO" },
+      { platform: "infoq", metric: { published: iso }, expectMs: ts * 1000, desc: "infoq ISO" },
+      { platform: "hackernews", metric: { time: ts }, expectMs: ts * 1000, desc: "hackernews Unix 秒" },
+      { platform: "reddit", metric: { publishedAt: ts }, expectMs: ts * 1000, desc: "reddit Unix 秒" },
+      { platform: "bilibili", metric: { publishedAt: ts }, expectMs: ts * 1000, desc: "bilibili Unix 秒" },
+      { platform: "twitter", metric: { publishedAt: iso }, expectMs: ts * 1000, desc: "twitter ISO" },
+      { platform: "weibo", metric: {}, expectMs: null, desc: "weibo 无发布语义 → null" },
+      { platform: "zhihu", metric: {}, expectMs: null, desc: "zhihu 无发布语义 → null" },
+      { platform: "github", metric: {}, expectMs: null, desc: "github 无发布语义 → null" },
+    ];
+
+    let ok = 0;
+    const failures: string[] = [];
+    for (const c of cases) {
+      const got = extractPublishedAt(c.platform, c.metric);
+      const gotMs = got ? got.getTime() : null;
+      if (gotMs === c.expectMs) ok++;
+      else failures.push(`${c.desc} 期望 ${c.expectMs} 得到 ${gotMs}`);
+    }
+    failures.length === 0
+      ? pass(g, "9 平台 extractPublishedAt 映射", `${ok}/${cases.length} 全通过`)
+      : fail(g, "9 平台 extractPublishedAt 映射", failures.join(" / "));
+
+    // ----- 2) 脏数据范围校验 -----
+    const dirty: Array<[Parameters<typeof extractPublishedAt>[0], Record<string, unknown>, string]> = [
+      ["hackernews", { time: -1 }, "负 Unix 秒"],
+      ["hackernews", { time: 0 }, "0 Unix 秒"],
+      ["googlenews", { published: "not a date" }, "非法字符串"],
+      ["googlenews", { published: "" }, "空字符串"],
+      ["googlenews", { published: "1970-01-01T00:00:01Z" }, "1980 前"],
+    ];
+    let dirtyOk = 0;
+    const dirtyFail: string[] = [];
+    for (const [p, m, desc] of dirty) {
+      const got = extractPublishedAt(p, m);
+      if (got === null) dirtyOk++;
+      else dirtyFail.push(`${desc} 应为 null 但得到 ${got.toISOString()}`);
+    }
+    dirtyFail.length === 0
+      ? pass(g, "脏数据全部返回 null", `${dirtyOk}/${dirty.length} 拒绝`)
+      : fail(g, "脏数据全部返回 null", dirtyFail.join(" / "));
+
+    // ----- 3) pickEarliestPublishedAt 取最早 -----
+    const t1 = new Date("2024-05-01T00:00:00Z").getTime() / 1000;
+    const t2 = new Date("2024-06-01T00:00:00Z").getTime() / 1000;
+    const earliest = pickEarliestPublishedAt([
+      { platform: "hackernews", metric: { time: t2 } },
+      { platform: "hackernews", metric: { time: t1 } },
+      { platform: "weibo", metric: {} },
+    ]);
+    earliest && earliest.getTime() === t1 * 1000
+      ? pass(g, "pickEarliestPublishedAt 取最早", earliest.toISOString())
+      : fail(
+          g,
+          "pickEarliestPublishedAt 取最早",
+          `期望 ${new Date(t1 * 1000).toISOString()} 得到 ${earliest?.toISOString()}`,
+        );
+
+    // ----- 4) /api/hotspots 列表项透传 publishedAt + 关联字段 -----
+    const r = await fetch(`${BASE}/api/hotspots?limit=10`);
+    if (r.status !== 200) {
+      fail(g, "/api/hotspots 列表请求", `HTTP ${r.status}`);
+      return;
+    }
+    const list = (await r.json()) as {
+      items: Array<{
+        publishedAt?: string | null;
+        processedAt?: string | null;
+        trendVelocity?: number | null;
+        sources: Array<{ publishedAt?: string | null }>;
+      }>;
+    };
+    const allHavePublishedKey = list.items.every((it) => "publishedAt" in it);
+    const allHaveProcessedKey = list.items.every((it) => "processedAt" in it);
+    const allHaveVelocityKey = list.items.every((it) => "trendVelocity" in it);
+    const allSourceHaveKey = list.items.every((it) =>
+      it.sources.every((s) => "publishedAt" in s),
+    );
+    allHavePublishedKey
+      ? pass(g, "列表 item 透传 publishedAt 字段", `${list.items.length} 条全部含字段`)
+      : fail(g, "列表 item 透传 publishedAt 字段", "存在 item 缺字段");
+    allHaveProcessedKey
+      ? pass(g, "列表 item 透传 processedAt 字段", "OK")
+      : fail(g, "列表 item 透传 processedAt 字段", "存在 item 缺字段");
+    allHaveVelocityKey
+      ? pass(g, "列表 item 透传 trendVelocity 字段", "OK")
+      : fail(g, "列表 item 透传 trendVelocity 字段", "存在 item 缺字段");
+    allSourceHaveKey
+      ? pass(g, "列表 source 透传 publishedAt 字段", "OK")
+      : fail(g, "列表 source 透传 publishedAt 字段", "存在 source 缺字段");
+
+    // ----- 5) DB 实测：至少有 HotSpot 已写入 publishedAt -----
+    const withPub = await db.hotSpot.count({
+      where: { publishedAt: { not: null } },
+    });
+    withPub > 0
+      ? pass(g, "DB 含 publishedAt 数据", `${withPub} 条 HotSpot 已写入`)
+      : fail(g, "DB 含 publishedAt 数据", "0 条 — 检查 ingest.ts 写入逻辑");
   });
 }
 
@@ -1095,6 +1223,7 @@ async function main() {
   await testCredentialsAuth();
   await testTechFilter();
   await testKeywords();
+  await testPublishedAt();
   await testScrapersIsolated();
   await testDatabaseIntegrity();
   await testAiPipelineStatic();
