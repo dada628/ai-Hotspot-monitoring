@@ -238,6 +238,83 @@ async function testHotSpotDetailApi() {
   });
 }
 
+async function testRelatedApi() {
+  await group("API · /api/hotspots/[id]/related 相关推荐", async () => {
+    const g = "Related";
+
+    const sample = await db.hotSpot.findFirst({
+      where: { status: "active" },
+    });
+    if (!sample) {
+      fail(g, "找一条 HotSpot 当样本", "DB 没有 active HotSpot");
+      return;
+    }
+
+    // 1) 默认 limit=6
+    const r = await fetch(`${BASE}/api/hotspots/${sample.id}/related`);
+    if (r.status !== 200) {
+      fail(g, `GET 默认`, `${r.status}`);
+      return;
+    }
+    const data = await r.json();
+
+    const expected = ["main", "items", "candidatesScanned", "windowDays"];
+    const missing = expected.filter((k) => !(k in data));
+    missing.length === 0
+      ? pass(
+          g,
+          "返回结构完整",
+          `items=${data.items.length} candidates=${data.candidatesScanned} window=${data.windowDays}d`,
+        )
+      : fail(g, "返回结构完整", `缺: ${missing.join(",")}`);
+
+    // 2) items 不包含自己
+    const selfIncluded = data.items.some(
+      (it: { id: string }) => it.id === sample.id,
+    );
+    selfIncluded
+      ? fail(g, "items 应不含自己", "包含自己 ✗")
+      : pass(g, "items 应不含自己", "✓");
+
+    // 3) items 按 relevance desc 排序
+    let sortedOk = true;
+    for (let i = 1; i < data.items.length; i++) {
+      if (data.items[i].relevance > data.items[i - 1].relevance) {
+        sortedOk = false;
+        break;
+      }
+    }
+    sortedOk
+      ? pass(g, "按 relevance desc 排序", "✓")
+      : fail(g, "按 relevance desc 排序", "存在乱序");
+
+    // 4) limit 参数被尊重
+    const r2 = await fetch(
+      `${BASE}/api/hotspots/${sample.id}/related?limit=3`,
+    );
+    const d2 = await r2.json();
+    d2.items.length <= 3
+      ? pass(g, "limit=3 应 ≤3 条", `${d2.items.length} 条`)
+      : fail(g, "limit=3 应 ≤3 条", `${d2.items.length} 条`);
+
+    // 5) 不存在 id → 404
+    const bad = await fetch(
+      `${BASE}/api/hotspots/no-such-id-zzz-12345/related`,
+    );
+    bad.status === 404
+      ? pass(g, "不存在 id 应 404", "✓")
+      : fail(g, "不存在 id 应 404", `${bad.status}`);
+
+    // 6) 所有 items 的 relevance 都 ≥ MIN（0.05）
+    const allAboveMin = data.items.every(
+      (it: { relevance: number }) => it.relevance >= 0.05,
+    );
+    allAboveMin
+      ? pass(g, "所有 items relevance ≥ 0.05", "✓")
+      : fail(g, "所有 items relevance ≥ 0.05", "存在低于阈值的项");
+  });
+}
+
 async function testStatsApi() {
   await group("API · stats / hotspots", async () => {
     const g = "API";
@@ -745,6 +822,7 @@ async function main() {
   await testAiPipelineStatic();
   await testProcessApiRouting();
   await testHotSpotDetailApi();
+  await testRelatedApi();
   await testAiPipelineIntegration();
 
   // 汇总

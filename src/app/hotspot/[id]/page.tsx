@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import type { Route } from "next";
 import { Brand } from "@/components/Brand";
 import { Badge } from "@/components/Badge";
 import { Spotlight } from "@/components/aceternity/Spotlight";
@@ -34,6 +35,27 @@ interface HotSpotDetail {
   sources: HotSpotSource[];
 }
 
+interface RelatedItem {
+  id: string;
+  title: string;
+  category: string | null;
+  tags: string; // JSON
+  score: number;
+  engagementScore: number;
+  updatedAt: string;
+  sources: Array<{ platform: string }>;
+  relevance: number;
+  sharedTags: number;
+  categoryMatch: boolean;
+}
+
+interface RelatedResponse {
+  main: { id: string; title: string; category: string | null };
+  items: RelatedItem[];
+  candidatesScanned: number;
+  windowDays: number;
+}
+
 const CATEGORY_LABELS_ZH: Record<string, string> = {
   tech: "科技",
   society: "社会",
@@ -53,7 +75,9 @@ export default function HotSpotDetailPage({
   const { id } = use(params);
 
   const [data, setData] = useState<HotSpotDetail | null>(null);
+  const [related, setRelated] = useState<RelatedResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [relatedLoading, setRelatedLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -73,9 +97,24 @@ export default function HotSpotDetailPage({
     }
   }, [id]);
 
+  const loadRelated = useCallback(async () => {
+    setRelatedLoading(true);
+    try {
+      const res = await fetch(`/api/hotspots/${id}/related?limit=6`, {
+        cache: "no-store",
+      });
+      if (res.ok) setRelated(await res.json());
+    } catch {
+      // 相关热点失败不阻塞主内容
+    } finally {
+      setRelatedLoading(false);
+    }
+  }, [id]);
+
   useEffect(() => {
     load();
-  }, [load]);
+    loadRelated();
+  }, [load, loadRelated]);
 
   return (
     <main className="relative min-h-screen">
@@ -112,7 +151,13 @@ export default function HotSpotDetailPage({
           </div>
         )}
 
-        {data && <DetailContent data={data} />}
+        {data && (
+          <DetailContent
+            data={data}
+            related={related}
+            relatedLoading={relatedLoading}
+          />
+        )}
       </div>
 
       <footer className="max-w-5xl mx-auto px-6 py-10 text-center text-xs text-[var(--color-text-muted)]">
@@ -123,7 +168,15 @@ export default function HotSpotDetailPage({
   );
 }
 
-function DetailContent({ data }: { data: HotSpotDetail }) {
+function DetailContent({
+  data,
+  related,
+  relatedLoading,
+}: {
+  data: HotSpotDetail;
+  related: RelatedResponse | null;
+  relatedLoading: boolean;
+}) {
   const tags = parseJson<string[]>(data.tags, []);
   const keyPoints = parseJson<string[]>(data.keyPoints, []);
   const entities = parseJson<string[]>(data.entities, []);
@@ -290,6 +343,41 @@ function DetailContent({ data }: { data: HotSpotDetail }) {
         </div>
       </section>
 
+      {/* ===== 相关热点 ===== */}
+      <section className="glass p-6 md:p-7">
+        <SectionTitle
+          icon={<CompassIcon />}
+          text={
+            related
+              ? `相关热点 · ${related.items.length} 条`
+              : "相关热点"
+          }
+        />
+        {relatedLoading && !related ? (
+          <div className="mt-4 grid sm:grid-cols-2 gap-3">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="glass p-3 h-20 shimmer" />
+            ))}
+          </div>
+        ) : related && related.items.length > 0 ? (
+          <>
+            <div className="mt-1 mb-3 text-xs text-[var(--color-text-muted)]">
+              基于 tag 重合 + 同分类 + 时效性 · 从最近{" "}
+              {related.windowDays} 天 {related.candidatesScanned} 条候选中筛选
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              {related.items.map((item) => (
+                <RelatedCard key={item.id} item={item} />
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="mt-4 text-center py-6 text-sm text-[var(--color-text-muted)]">
+            还没有发现相关热点 · AI 处理更多数据后会更准
+          </div>
+        )}
+      </section>
+
       {/* ===== 元数据时间 ===== */}
       <section className="glass p-5 text-xs text-[var(--color-text-muted)]">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -406,6 +494,74 @@ function SourceRow({ source }: { source: HotSpotSource }) {
         <span className="tabular-nums">{fmtTime(source.fetchedAt)}</span>
       </div>
     </a>
+  );
+}
+
+function RelatedCard({ item }: { item: RelatedItem }) {
+  const tags = parseJson<string[]>(item.tags, []);
+  const platforms = unique(item.sources.map((s) => s.platform));
+  const effectiveScore = item.score > 0 ? item.score : item.engagementScore;
+  const catLabel = item.category ? CATEGORY_LABELS_ZH[item.category] : null;
+
+  return (
+    <Link
+      href={`/hotspot/${item.id}` as Route}
+      className="block rounded-lg border border-[var(--color-line)] bg-[rgba(148,163,184,0.04)] hover:bg-[rgba(148,163,184,0.07)] hover:border-[var(--color-line-strong)] transition-colors p-3.5 group"
+    >
+      <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+        {catLabel && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded text-[#67e8f9] bg-[rgba(0,229,255,0.08)] border border-[rgba(0,229,255,0.2)]">
+            {catLabel}
+          </span>
+        )}
+        {item.categoryMatch && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded text-emerald-300 bg-[rgba(16,185,129,0.08)] border border-[rgba(16,185,129,0.25)]">
+            同类
+          </span>
+        )}
+        {item.sharedTags > 0 && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded text-[#a78bfa] bg-[rgba(167,139,250,0.08)] border border-[rgba(167,139,250,0.25)]">
+            共 {item.sharedTags} tag
+          </span>
+        )}
+        <div className="flex-1" />
+        <span className="text-[10px] text-[var(--color-text-dim)] tabular-nums">
+          相关度 {(item.relevance * 100).toFixed(0)}%
+        </span>
+      </div>
+      <h4 className="text-sm font-medium text-white group-hover:text-[var(--color-cyan-bright)] transition-colors leading-snug line-clamp-2">
+        {item.title}
+      </h4>
+      <div className="mt-2 flex items-center gap-2 text-[11px] text-[var(--color-text-muted)] flex-wrap">
+        <div className="flex items-center gap-1">
+          {platforms.slice(0, 3).map((p) => {
+            const meta = PLATFORM_META[p as PlatformKey];
+            return meta ? (
+              <span
+                key={p}
+                title={meta.label}
+                className="inline-block w-2 h-2 rounded-full"
+                style={{ background: meta.color }}
+              />
+            ) : null;
+          })}
+          {platforms.length > 3 && (
+            <span className="text-[10px]">+{platforms.length - 3}</span>
+          )}
+        </div>
+        {effectiveScore > 0 && (
+          <span className="tabular-nums">★ {effectiveScore.toFixed(0)}</span>
+        )}
+        {tags.length > 0 && (
+          <span className="line-clamp-1 flex-1 min-w-0">
+            {tags
+              .slice(0, 3)
+              .map((t) => `#${t}`)
+              .join(" ")}
+          </span>
+        )}
+      </div>
+    </Link>
   );
 }
 
@@ -588,6 +744,19 @@ function LinkChainIcon() {
         stroke="currentColor"
         strokeWidth="1.7"
         strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+function CompassIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7" />
+      <path
+        d="M15.5 8.5L13 13L8.5 15.5L11 11L15.5 8.5Z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinejoin="round"
       />
     </svg>
   );
