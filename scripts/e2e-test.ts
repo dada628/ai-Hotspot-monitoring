@@ -25,6 +25,13 @@ import {
   TECH_FILTER_META,
 } from "../src/lib/tech-filter";
 import {
+  autoVariants,
+  buildKeywordQueries,
+  entityAllVariants,
+  KEYWORD_CATALOG,
+  KEYWORD_CATALOG_META,
+} from "../src/lib/scrapers/keywords";
+import {
   ClassifySchema,
   ScoreSchema,
   SummarySchema,
@@ -541,6 +548,163 @@ async function testTechFilter() {
   });
 }
 
+async function testKeywords() {
+  await group("关键词中心 · 变体扩展 + query 合成", async () => {
+    const g = "Keywords";
+
+    // 1) 用户原例 · 连字符 → 空格变体：'GPT-Codex-5.3'
+    const v1 = autoVariants("GPT-Codex-5.3");
+    if (v1.includes("GPT-Codex-5.3") && v1.includes("GPT Codex 5.3")) {
+      pass(g, "autoVariants 连字符→空格变体", `[${v1.join(", ")}]`);
+    } else {
+      fail(
+        g,
+        "autoVariants 连字符→空格变体",
+        `期望含 'GPT-Codex-5.3' 和 'GPT Codex 5.3'，实得 [${v1.join(", ")}]`,
+      );
+    }
+
+    // 2) 用户原例反向 · 空格 → 连字符变体：'Codex 5.3'
+    const v2 = autoVariants("Codex 5.3");
+    if (v2.includes("Codex 5.3") && v2.includes("Codex-5.3")) {
+      pass(g, "autoVariants 空格→连字符变体", `[${v2.join(", ")}]`);
+    } else {
+      fail(
+        g,
+        "autoVariants 空格→连字符变体",
+        `期望含 'Codex 5.3' 和 'Codex-5.3'，实得 [${v2.join(", ")}]`,
+      );
+    }
+
+    // 3) 目录元信息：实体数 + family 覆盖
+    const minEntities = 20;
+    const minFamilies = 10;
+    if (
+      KEYWORD_CATALOG_META.totalEntities >= minEntities &&
+      KEYWORD_CATALOG_META.families.length >= minFamilies
+    ) {
+      pass(
+        g,
+        `目录规模：实体 ≥ ${minEntities}, family ≥ ${minFamilies}`,
+        `实得 entities=${KEYWORD_CATALOG_META.totalEntities}, families=${KEYWORD_CATALOG_META.families.length} (${KEYWORD_CATALOG_META.families.join("/")})`,
+      );
+    } else {
+      fail(
+        g,
+        `目录规模：实体 ≥ ${minEntities}, family ≥ ${minFamilies}`,
+        `entities=${KEYWORD_CATALOG_META.totalEntities}, families=${KEYWORD_CATALOG_META.families.length}`,
+      );
+    }
+
+    // 4) 英文 query 合成：primary 非空、长度合理、含 ChatGPT
+    const en = buildKeywordQueries({ lang: "en" });
+    const enOk =
+      en.primary !== "()" &&
+      en.secondary !== "()" &&
+      en.primary.length > 0 &&
+      en.primary.length <= 800 &&
+      en.secondary.length <= 800 &&
+      en.primary.includes("ChatGPT");
+    if (enOk) {
+      pass(
+        g,
+        "buildKeywordQueries(en) primary/secondary 健康",
+        `primary ${en.meta.primaryTokens}token/${en.meta.primaryChars}字; secondary ${en.meta.secondaryTokens}token/${en.meta.secondaryChars}字`,
+      );
+    } else {
+      fail(
+        g,
+        "buildKeywordQueries(en) primary/secondary 健康",
+        `primary 长度 ${en.primary.length}, 含 ChatGPT? ${en.primary.includes("ChatGPT")}, secondary 长度 ${en.secondary.length}`,
+      );
+    }
+
+    // 5) 用户原例核心断言：secondary 必须命中 Codex 系列变体
+    const codexVariants = ["Codex", "GPT-Codex", "Codex 5.3", "GPT-Codex-5.3", "GPT Codex 5.3"];
+    const codexHits = codexVariants.filter((v) => en.secondary.includes(v));
+    if (codexHits.length >= 3) {
+      pass(
+        g,
+        "secondary 覆盖用户原例 Codex 变体（≥3 种）",
+        `命中 ${codexHits.length} 种: [${codexHits.join(", ")}]`,
+      );
+    } else {
+      fail(
+        g,
+        "secondary 覆盖用户原例 Codex 变体（≥3 种）",
+        `仅命中 ${codexHits.length} 种: [${codexHits.join(", ")}]`,
+      );
+    }
+
+    // 6) 中文 query 合成：含国产模型品牌 + 中文话题词；不含英文专用模型品牌
+    //    注意区分 'Llama'（Meta 模型，lang='en'）vs 'LlamaIndex'（工具栈，lang='both'）。
+    //    用 \b 词边界正则把 Meta 的 Llama 系列识别准确；LlamaIndex 不会被误命中。
+    const zh = buildKeywordQueries({ lang: "zh" });
+    const zhBothLang = zh.primary.includes("DeepSeek") || zh.primary.includes("深度求索");
+    const zhQwen = zh.primary.includes("通义千问") || zh.primary.includes("Qwen");
+    const zhTopic = zh.primary.includes("大模型") || zh.primary.includes("人工智能");
+    const llamaWord = /\bLlama\b|\bLLaMA\b/;
+    const zhNoLlama = !llamaWord.test(zh.primary) && !llamaWord.test(zh.secondary);
+    if (zhBothLang && zhQwen && zhTopic && zhNoLlama) {
+      pass(
+        g,
+        "buildKeywordQueries(zh) 国产模型 + 话题词齐 + 排除 Meta Llama",
+        `primary ${zh.meta.primaryTokens}token; secondary ${zh.meta.secondaryTokens}token`,
+      );
+    } else {
+      fail(
+        g,
+        "buildKeywordQueries(zh) 国产模型 + 话题词齐 + 排除 Meta Llama",
+        `DeepSeek=${zhBothLang}, Qwen=${zhQwen}, 大模型/人工智能=${zhTopic}, 不含独立 Llama=${zhNoLlama}`,
+      );
+    }
+
+    // 7) 字符上限保护：maxChars=100 强制截断后仍能返回非空 query
+    const tight = buildKeywordQueries({ lang: "en", maxChars: 100 });
+    if (
+      tight.primary !== "()" &&
+      tight.primary.length <= 100 &&
+      tight.secondary.length <= 100
+    ) {
+      pass(
+        g,
+        "maxChars=100 截断后 primary 仍非空 且 不越线",
+        `primary ${tight.primary.length}字, secondary ${tight.secondary.length}字`,
+      );
+    } else {
+      fail(
+        g,
+        "maxChars=100 截断后 primary 仍非空 且 不越线",
+        `primary='${tight.primary}', secondary='${tight.secondary}'`,
+      );
+    }
+
+    // 8) 别名展开去重：同一 entity 的 alias 自动变体合并后不重复
+    const codexEntity = KEYWORD_CATALOG.find((e) =>
+      e.aliases.some((a) => a.includes("Codex")),
+    );
+    if (codexEntity) {
+      const expanded = entityAllVariants(codexEntity);
+      const unique = new Set(expanded);
+      if (expanded.length === unique.size && expanded.length >= 4) {
+        pass(
+          g,
+          "entityAllVariants(Codex) 展开去重",
+          `${expanded.length} 个变体: [${expanded.join(", ")}]`,
+        );
+      } else {
+        fail(
+          g,
+          "entityAllVariants(Codex) 展开去重",
+          `expanded=${expanded.length}, unique=${unique.size}`,
+        );
+      }
+    } else {
+      fail(g, "entityAllVariants(Codex) 展开去重", "目录中找不到含 Codex 的 entity");
+    }
+  });
+}
+
 async function testScrapersIsolated() {
   await group("6 个抓取器（隔离）", async () => {
     const g = "Scrapers";
@@ -930,6 +1094,7 @@ async function main() {
   await testAuthApi();
   await testCredentialsAuth();
   await testTechFilter();
+  await testKeywords();
   await testScrapersIsolated();
   await testDatabaseIntegrity();
   await testAiPipelineStatic();
