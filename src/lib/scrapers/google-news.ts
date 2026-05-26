@@ -5,8 +5,12 @@
  *   Google News 提供 RSS 搜索：
  *     https://news.google.com/rss/search?q=<query>&hl=en-US&gl=US&ceid=US:en
  *
- *   多类目并行（中英双语 × AI/科技/财经/社会/科学），合并去重。
+ *   多类目并行（中英双语 × AI/科技/科学），合并去重。
  *   metric.categoryHint 给 AI Pipeline 一个分类提示（不强制覆盖 AI 的判断）。
+ *
+ * 2026-05-26 收紧：移除 finance-zh / society-zh 两路（用户要求"信息都跟科技相关"）。
+ *   保留 5 路：ai-en、ai-zh、tech-en、tech-zh、science-en
+ *   不再使用的 categoryHint 类型（society / finance / entertainment）从联合类型中移除。
  */
 
 import Parser from "rss-parser";
@@ -16,12 +20,7 @@ interface QueryConfig {
   /** 用于 metric.lang */
   lang: "en" | "zh";
   /** 类目提示，提交给 AI Pipeline 作为分类初值（AI 仍可自行调整） */
-  categoryHint:
-    | "tech"
-    | "science"
-    | "society"
-    | "finance"
-    | "entertainment";
+  categoryHint: "tech" | "science";
   /** 用于调试与日志 */
   label: string;
   url: string;
@@ -56,18 +55,6 @@ const QUERIES: QueryConfig[] = [
     url: `https://news.google.com/rss/search?q=科技+OR+创业+OR+融资+OR+上市+when:1d&${ZH_PARAMS}`,
   },
   {
-    lang: "zh",
-    categoryHint: "finance",
-    label: "finance-zh",
-    url: `https://news.google.com/rss/search?q=股市+OR+经济+OR+加密货币+OR+美联储+when:1d&${ZH_PARAMS}`,
-  },
-  {
-    lang: "zh",
-    categoryHint: "society",
-    label: "society-zh",
-    url: `https://news.google.com/rss/search?q=社会+OR+政策+OR+民生+OR+教育+when:1d&${ZH_PARAMS}`,
-  },
-  {
     lang: "en",
     categoryHint: "science",
     label: "science-en",
@@ -76,11 +63,12 @@ const QUERIES: QueryConfig[] = [
 ];
 
 /**
- * 单路查询取 10 条，7 路并行原则上有 70 条，去重后取前 45 条。
- * 上限设 45 避免 Google News 单源在前端"压制"中文社区源。
+ * 单路查询取 10 条，5 路并行原则上有 50 条，去重后取前 32 条。
+ * 上限设 32 避免 Google News 单源在前端"压制"其他源；
+ * 删掉 finance/society 两路后总召回降低，相应下调 TOTAL_LIMIT 与 v4 比例一致。
  */
 const PER_QUERY_LIMIT = 10;
-const TOTAL_LIMIT = 45;
+const TOTAL_LIMIT = 32;
 
 interface GoogleNewsItem {
   title?: string;

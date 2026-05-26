@@ -2,7 +2,9 @@
  * HackerNews 抓取器 — 两种数据源混合
  *
  * 1. Firebase /topstories.json：当前首页排行（综合热门，含非 AI 话题）
+ *    2026-05-26 起加 isTechRelated 软过滤：HN topstories 约 10% 是政经/科普/生活类，过滤掉
  * 2. Algolia search：按 AI 关键词专题（最新 + 高分），聚焦 AI 工程师感兴趣的内容
+ *    本身已限定 AI 关键词，无需再过滤
  *
  * 文档:
  *   - https://hacker-news.firebaseio.com/v0/topstories.json
@@ -12,6 +14,7 @@
  */
 
 import { fetchJSON } from "./http";
+import { isTechRelated } from "@/lib/tech-filter";
 import type { RawHotItem, Scraper } from "./types";
 
 interface HnFirebaseItem {
@@ -95,7 +98,8 @@ async function fetchTopStories(): Promise<RawHotItem[]> {
     });
   }
 
-  return items;
+  // topstories 路：HN 首页含少量非科技讨论（政经/科普/生活），用白名单软过滤
+  return items.filter((it) => isTechRelated(it.title));
 }
 
 async function fetchAlgoliaSearch(): Promise<RawHotItem[]> {

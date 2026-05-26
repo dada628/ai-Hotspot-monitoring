@@ -2,8 +2,12 @@
  * 微博热搜抓取器
  * 主接口：https://m.weibo.cn/api/container/getIndex?containerid=106003type%3D25%26t%3D3%26disable_hot%3D1%26filter_type%3Drealtimehot
  * 备用接口：https://60s.viki.moe/v2/weibo
+ *
+ * 2026-05-26 收紧：用户决策"信息都跟科技相关"。
+ *   两路返回前都套 isTechRelated(title) 过滤；微博热搜默认 ~85% 是娱乐/社会，过滤后预计保留 0-8 条。
  */
 import { fetchJSON } from "./http";
+import { isTechRelated } from "@/lib/tech-filter";
 import type { RawHotItem, Scraper } from "./types";
 
 interface WeiboMobileResp {
@@ -106,11 +110,14 @@ export const weiboScraper: Scraper = {
   platform: "weibo",
   displayName: "微博热搜",
   async fetch() {
+    let raw: RawHotItem[];
     try {
-      return await fetchPrimary();
+      raw = await fetchPrimary();
     } catch (err) {
       console.warn("[scraper:weibo] primary failed, fallback:", err);
-      return await fetchFallback();
+      raw = await fetchFallback();
     }
+    // 源头白名单：仅保留命中科技关键词的热搜
+    return raw.filter((it) => isTechRelated(it.title));
   },
 };

@@ -20,6 +20,11 @@ import {
 } from "../src/lib/ai/models";
 import { ALL_PLATFORMS } from "../src/lib/scrapers";
 import {
+  isTechRelated,
+  isBilibiliTechPartition,
+  TECH_FILTER_META,
+} from "../src/lib/tech-filter";
+import {
   ClassifySchema,
   ScoreSchema,
   SummarySchema,
@@ -429,6 +434,96 @@ async function testAuthApi() {
   });
 }
 
+async function testTechFilter() {
+  await group("科技相关性过滤（isTechRelated / B 站分区）", async () => {
+    const g = "TechFilter";
+
+    // 1) 关键词总量合理（防止意外清空或炸到上千）
+    if (TECH_FILTER_META.total >= 80 && TECH_FILTER_META.total <= 400) {
+      pass(
+        g,
+        "关键词总量在合理区间",
+        `${TECH_FILTER_META.total}（中文 ${TECH_FILTER_META.cnCount} + 英长 ${TECH_FILTER_META.enLongCount} + 英短 ${TECH_FILTER_META.enShortCount}）`,
+      );
+    } else {
+      fail(
+        g,
+        "关键词总量在合理区间",
+        `total=${TECH_FILTER_META.total}（期望 80-400）`,
+      );
+    }
+
+    // 2) 中文正样本必须命中
+    const cnPositive = [
+      "OpenAI 发布 GPT-5 内测版",
+      "字节跳动开源大模型 Qwen3",
+      "英伟达发布新一代 AI 芯片",
+      "苹果 iPhone 17 Pro 发布",
+      "马斯克谈 Tesla FSD V13",
+      "小米发布新一代鸿蒙",
+    ];
+    const cnMissed = cnPositive.filter((s) => !isTechRelated(s));
+    if (cnMissed.length === 0) {
+      pass(g, "中文科技正样本全命中", `${cnPositive.length} 条 OK`);
+    } else {
+      fail(g, "中文科技正样本全命中", `漏: ${cnMissed.join(" | ")}`);
+    }
+
+    // 3) 英文正样本必须命中
+    const enPositive = [
+      "OpenAI announces GPT-5",
+      "Microsoft releases Copilot upgrade",
+      "How to fine-tune a Llama 3 model",
+      "Anthropic launches Claude 4",
+      "Apple unveils new iPad Pro",
+    ];
+    const enMissed = enPositive.filter((s) => !isTechRelated(s));
+    if (enMissed.length === 0) {
+      pass(g, "英文科技正样本全命中", `${enPositive.length} 条 OK`);
+    } else {
+      fail(g, "英文科技正样本全命中", `漏: ${enMissed.join(" | ")}`);
+    }
+
+    // 4) 负样本必须拒绝（典型娱乐/社会/政经）
+    const negative = [
+      "刘德华演唱会延期",
+      "NBA 总冠军预测",
+      "今日全国天气预报",
+      "Florida restored HIV assistance funding",
+      "Adam Vareberg wins regional cooking contest",
+      "浪姐综艺导演吴梦知离职",
+    ];
+    const falsePositives = negative.filter((s) => isTechRelated(s));
+    if (falsePositives.length === 0) {
+      pass(g, "非科技负样本全部拒绝", `${negative.length} 条 OK`);
+    } else {
+      fail(g, "非科技负样本全部拒绝", `误命中: ${falsePositives.join(" | ")}`);
+    }
+
+    // 5) 边界：短英文词 "AI" 不应误匹配 "said" / "paid"
+    const tricky = ["He said it would rain", "Paid subscribers grow 5%"];
+    const trickyHit = tricky.filter((s) => isTechRelated(s));
+    if (trickyHit.length === 0) {
+      pass(g, "短词边界：'said'/'paid' 不误命中 'AI'", "OK");
+    } else {
+      fail(g, "短词边界：'said'/'paid' 不误命中 'AI'", trickyHit.join(" | "));
+    }
+
+    // 6) B 站分区白名单
+    const partitionOk =
+      isBilibiliTechPartition("科技") &&
+      isBilibiliTechPartition("知识") &&
+      !isBilibiliTechPartition("生活") &&
+      !isBilibiliTechPartition("游戏") &&
+      !isBilibiliTechPartition(null);
+    if (partitionOk) {
+      pass(g, "B 站分区白名单 = 科技/知识", "OK");
+    } else {
+      fail(g, "B 站分区白名单 = 科技/知识", "判定不正确");
+    }
+  });
+}
+
 async function testScrapersIsolated() {
   await group("6 个抓取器（隔离）", async () => {
     const g = "Scrapers";
@@ -817,6 +912,7 @@ async function main() {
   await testStatsApi();
   await testAuthApi();
   await testCredentialsAuth();
+  await testTechFilter();
   await testScrapersIsolated();
   await testDatabaseIntegrity();
   await testAiPipelineStatic();

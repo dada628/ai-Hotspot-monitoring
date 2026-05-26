@@ -5,8 +5,14 @@
  *   1. 先请求 https://www.zhihu.com/ 拿到 d_c0 cookie，再带 cookie 请求 API
  *   2. 失败则爬 https://www.zhihu.com/billboard 的内嵌 JSON（initialData）
  *   3. 再失败则用聚合 API https://60s.viki.moe/v2/zhihu
+ *
+ * 2026-05-26 收紧：用户决策"信息都跟科技相关"。
+ *   三路返回前都套 isTechRelated(title + excerpt) 过滤；
+ *   知乎热榜以情感/社会/电竞/教育为主，~85% 非科技，过滤后预计保留 2-8 条。
+ *   带上 excerpt（摘要）一起判断，比纯标题更敏感（如标题问"该如何看"但摘要含 AI 等关键词）。
  */
 import { fetchJSON, fetchHTML, fetchWithTimeout } from "./http";
+import { isTechRelated } from "@/lib/tech-filter";
 import type { RawHotItem, Scraper } from "./types";
 
 interface ZhihuApiResp {
@@ -169,16 +175,22 @@ export const zhihuScraper: Scraper = {
   platform: "zhihu",
   displayName: "知乎热榜",
   async fetch() {
+    let raw: RawHotItem[];
     try {
-      return await fetchViaApi();
+      raw = await fetchViaApi();
     } catch (err1) {
       console.warn("[scraper:zhihu] api strategy failed:", err1);
       try {
-        return await fetchViaBillboard();
+        raw = await fetchViaBillboard();
       } catch (err2) {
         console.warn("[scraper:zhihu] billboard strategy failed:", err2);
-        return await fetchViaAggregator();
+        raw = await fetchViaAggregator();
       }
     }
+    // 源头白名单：标题 + excerpt 任一命中即放行
+    return raw.filter((it) => {
+      const excerpt = typeof it.metric.excerpt === "string" ? it.metric.excerpt : "";
+      return isTechRelated(it.title) || isTechRelated(excerpt);
+    });
   },
 };
