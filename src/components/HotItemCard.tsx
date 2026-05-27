@@ -6,6 +6,7 @@ import type { Route } from "next";
 import { Badge } from "./Badge";
 import { BorderBeam } from "./aceternity/BorderBeam";
 import { PLATFORM_META, type PlatformKey } from "@/lib/platforms";
+import { extractSourceExcerpt } from "@/lib/source-excerpt";
 
 interface SourceLite {
   platform: string;
@@ -456,9 +457,8 @@ export function HotItemCard({
  */
 function pickRawExcerpt(primary: SourceLite | undefined): string | null {
   if (!primary) return null;
-  const m = primary.metric ?? {};
-  const excerpt = str(m.excerpt) || str(m.description) || str(m.desc);
-  if (excerpt) return excerpt;
+  const fromMetric = extractSourceExcerpt(primary.metric ?? null);
+  if (fromMetric) return fromMetric;
   const raw = (primary.rawTitle ?? "").trim();
   return raw || null;
 }

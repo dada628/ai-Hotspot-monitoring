@@ -86,16 +86,18 @@ export type ScoreOutput = z.infer<typeof ScoreSchema>;
 export const SummarySchema = z.object({
   summary: z
     .string()
-    .min(20)
-    .max(220)
+    .min(80)
+    .max(800)
     .describe(
-      "中文摘要 50-200 字。客观陈述事件本身，不要营销腔、不用感叹号、不要'网友热议'之类的废话",
+      "中文长导读 200-500 字（详情页阅读用）。结构：①背景/来龙去脉 ②核心内容（技术点/事件细节）③重要性或影响 ④适合谁关注。" +
+        "有『原文摘录』时优先基于摘录展开；只有标题时基于标题做合理推断，但禁止编造具体数字/引语。" +
+        "禁止营销腔、感叹号、'网友热议'类套话。技术类要写清技术名词与场景。",
     ),
   keyPoints: z
-    .array(z.string().min(2).max(60))
-    .min(1)
+    .array(z.string().min(2).max(80))
+    .min(3)
     .max(5)
-    .describe("3-5 条关键信息点，每条一句话 ≤ 30 字"),
+    .describe("3-5 条关键信息点，每条一句话 ≤ 50 字，覆盖事实/技术点/影响"),
   entities: z
     .array(z.string().min(1).max(30))
     .max(8)

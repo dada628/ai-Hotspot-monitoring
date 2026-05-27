@@ -13,6 +13,7 @@
  */
 
 import { db } from "@/lib/db";
+import { collectSourceExcerpts } from "@/lib/source-excerpt";
 import { classify } from "./prompts/classify";
 import { summarize } from "./prompts/summarize";
 import { score as scoreItem } from "./prompts/score";
@@ -263,13 +264,25 @@ async function processOne(
     platform: s.platform,
     rawTitle: s.rawTitle,
   }));
+  const sourceExcerpts = collectSourceExcerpts(
+    h.sources.map((s) => ({
+      platform: s.platform,
+      rawTitle: s.rawTitle,
+      metric: s.metric,
+    })),
+  );
 
   // ----- (1) 分类 -----
   const classifyResult = await classify({ title: h.title, platforms }, modelId);
 
   // ----- (2) 摘要 -----
   const summaryResult = await summarize(
-    { title: h.title, category: classifyResult.category, sourceTitles },
+    {
+      title: h.title,
+      category: classifyResult.category,
+      sourceTitles,
+      sourceExcerpts,
+    },
     modelId,
   );
 
