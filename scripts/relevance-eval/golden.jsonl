@@ -1,0 +1,43 @@
+{"id":"d-001","query":"DeepSeek","title":"DeepSeek V3.2 发布新推理能力，API 价格下调","summary":"深度求索宣布 DeepSeek V3.2 在代码与数学推理上提升，开发者可通过官方 API 调用。","expectedTier":"direct","notes":"标题+摘要均点名"}
+{"id":"d-002","query":"DeepSeek","title":"深度求索 DeepSeek 开源新模型权重","summary":"模型在 Hugging Face 上线，支持商用协议。","expectedTier":"direct","notes":"中文别名"}
+{"id":"d-003","query":"OpenAI","title":"OpenAI 宣布 GPT-5 内测邀请扩大","summary":"面向企业客户分批开放，强调多模态与工具调用。","expectedTier":"direct"}
+{"id":"d-004","query":"GPT-Codex-5.3","title":"开发者热议 GPT-Codex-5.3 在 IDE 中的表现","summary":"与 Copilot 对比评测文章增多。","expectedTier":"direct","notes":"变体写法"}
+{"id":"d-005","query":"Codex 5.3","title":"OpenAI Codex 5.3 支持更长上下文窗口","summary":"","expectedTier":"direct","notes":"仅标题"}
+{"id":"d-006","query":"Claude","title":"Anthropic 发布 Claude Sonnet 4.5 企业版","summary":"摘要强调 Claude 在代码审查场景的表现。","expectedTier":"direct"}
+{"id":"d-007","query":"Qwen","title":"阿里通义千问 Qwen3-Max 开放 API","summary":"Qwen 系列在中文指令跟随上更新。","expectedTier":"direct"}
+{"id":"d-008","query":"Gemini","title":"Google Gemini 3 多模态演示曝光","summary":"视频生成与搜索整合成为焦点。","expectedTier":"direct"}
+{"id":"d-009","query":"Llama","title":"Meta Llama 4 权重疑似泄露引发讨论","summary":"社区关注许可证与安全防护。","expectedTier":"direct"}
+{"id":"d-010","query":"RAG","title":"一文读懂 RAG：检索增强生成架构与实践","summary":"介绍向量库、分块与重排序。","expectedTier":"direct"}
+{"id":"d-011","query":"Kubernetes","title":"Kubernetes 1.32 正式发布","summary":"调度器与网关 API 有若干改进。","expectedTier":"direct"}
+{"id":"d-012","query":"Cursor","title":"Cursor 编辑器 0.45 加入多 Agent 协作","summary":"开发者讨论 Cursor 对 Copilot 的冲击。","expectedTier":"direct"}
+{"id":"r-001","query":"DeepSeek","title":"国产大模型价格战升温，API 按 token 计费创新低","summary":"多家厂商跟进，未点名具体品牌。","expectedTier":"related","notes":"行业但无 DeepSeek"}
+{"id":"r-002","query":"OpenAI","title":"Anthropic 发布 Claude 4 对标 GPT 系列","summary":"比较两家在编码 benchmark 上的差异。","expectedTier":"related"}
+{"id":"r-003","query":"GPT-5","title":"谷歌 Gemini 2.5 在 LMSYS 榜单超过上一代 GPT","summary":"未出现 GPT-5 字样。","expectedTier":"related"}
+{"id":"r-004","query":"DeepSeek","title":"英伟达 H200 出货加速，利好 AI 训练集群","summary":"硬件新闻，未提 DeepSeek。","expectedTier":"related"}
+{"id":"r-005","query":"RAG","title":"Pinecone 与 Weaviate 向量数据库融资对比","summary":"向量检索基础设施，未写 RAG 一词。","expectedTier":"related"}
+{"id":"r-006","query":"Codex","title":"GitHub Copilot Workspace 开启公测","summary":"代码助手赛道，未提 Codex。","expectedTier":"related"}
+{"id":"r-007","query":"ChatGPT","title":"大语言模型幻觉问题仍困扰企业落地","summary":"泛 LLM，未点名 ChatGPT。","expectedTier":"related"}
+{"id":"r-008","query":"OpenRouter","title":"开源社区讨论统一 LLM API 网关方案","summary":"同类概念但未提 OpenRouter 品牌。","expectedTier":"related"}
+{"id":"r-009","query":"DeepSeek","title":"#大模型 标签下热议推理成本","summary":"摘要：行业趋势分析，无品牌名。","expectedTier":"related"}
+{"id":"r-010","query":"AI","title":"欧盟 AI 法案细则草案公布","summary":"政策法规，非产品名 AI。","expectedTier":"related","notes":"query=AI 但语境是法案"}
+{"id":"r-011","query":"GLM","title":"清华团队发布新一代中文基座模型","summary":"未出现 GLM/智谱字样。","expectedTier":"related"}
+{"id":"r-012","query":"Kimi","title":"长上下文助手类产品月活创新高","summary":"品类描述，未点名 Kimi。","expectedTier":"related"}
+{"id":"i-001","query":"DeepSeek","title":"刘德华演唱会延期引发粉丝讨论","summary":"娱乐新闻。","expectedTier":"irrelevant"}
+{"id":"i-002","query":"OpenAI","title":"NBA 总决赛 G6 收视率创新高","summary":"体育。","expectedTier":"irrelevant"}
+{"id":"i-003","query":"GPT-5","title":"今日全国天气预报：南方多雨","summary":"","expectedTier":"irrelevant"}
+{"id":"i-004","query":"DeepSeek","title":"某综艺导演离职登上热搜","summary":"娱乐八卦。","expectedTier":"irrelevant"}
+{"id":"i-005","query":"Claude","title":"家常菜红烧肉做法分享","summary":"生活内容。","expectedTier":"irrelevant"}
+{"id":"i-006","query":"AI","title":"He said it would rain tomorrow","summary":"英文 said 子串误命中 AI","expectedTier":"irrelevant","notes":"对应 tech-filter 边界"}
+{"id":"i-007","query":"AI","title":"Paid subscribers grow 5% this quarter","summary":"paid 含 ai 子串","expectedTier":"irrelevant"}
+{"id":"i-008","query":"RAG","title":"登山装备 RAG 登山杖选购指南","summary":"户外装备 RAG 缩写，非检索增强","expectedTier":"irrelevant"}
+{"id":"i-009","query":"DeepSeek","title":"Florida restored HIV assistance funding","summary":"社会时政，英文无科技关联。","expectedTier":"irrelevant"}
+{"id":"i-010","query":"Gemini","title":"双子座本周运势解析","summary":"星座 Gemini 歧义","expectedTier":"irrelevant"}
+{"id":"d-013","query":"DeepSeek","title":"深度求索","summary":"仅品牌中文名出现在标题。","expectedTier":"direct"}
+{"id":"r-013","query":"DeepSeek","title":"斯坦福博士生研究同学用 AI 写分手短信","summary":"研究 AI 行为，未提 DeepSeek。","expectedTier":"related","notes":"用户截图类案例"}
+{"id":"d-014","query":"OpenAI","title":"GPT-4o mini 降价","summary":"OpenAI 产品线，query 为 OpenAI 品牌","expectedTier":"direct","notes":"子产品算品牌脉络-direct 边界；标注 direct 因 OpenAI 明确"}
+{"id":"r-014","query":"OpenAI","title":"GPT-4o mini 降价","summary":"标题未出现 OpenAI 字符串","expectedTier":"related","notes":"与 d-014 对照：仅 GPT 产品名"}
+{"id":"i-011","query":"Python","title":"JavaScript 框架 React 19 发布","summary":"编程但非 Python","expectedTier":"irrelevant"}
+{"id":"d-015","query":"华为","title":"华为 Mate 80 系列发布会定档","summary":"含品牌。","expectedTier":"direct"}
+{"id":"r-015","query":"华为","title":"国产手机市场 Q1 份额报告","summary":"未点名华为。","expectedTier":"related"}
+{"id":"d-016","query":"vLLM","title":"vLLM 0.6 提升吞吐与 PagedAttention","summary":"","expectedTier":"direct"}
+{"id":"i-012","query":"vLLM","title":"VMware 虚拟机迁移最佳实践","summary":"V+M 字母相近但无关","expectedTier":"irrelevant"}
