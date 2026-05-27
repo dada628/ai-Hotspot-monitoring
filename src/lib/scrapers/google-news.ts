@@ -129,7 +129,9 @@ async function fetchOneFeed(q: QueryConfig): Promise<RawHotItem[]> {
         lang: q.lang,
         source: sourceName,
         published: e.isoDate ?? e.pubDate ?? "",
-        // 给 AI Pipeline 一个分类提示（AI 仍可自行调整）
+        // v9: 透传 RSS contentSnippet 作为原文摘录，给 AI Pipeline 增加上下文
+        // 同时让前端"原文摘录"行有内容显示（HotItemCard.pickRawExcerpt 会读 excerpt/description/desc）
+        excerpt: cleanContentSnippet(e.contentSnippet),
         categoryHint: q.categoryHint,
         queryLabel: q.label,
       },
@@ -170,6 +172,26 @@ async function fetchGoogleNews(): Promise<RawHotItem[]> {
   }
 
   return unique.slice(0, TOTAL_LIMIT);
+}
+
+/**
+ * 清洗 RSS contentSnippet：
+ * - 去 HTML 残余（rss-parser 大多场景下已无 tag，但 Google News 偶尔有 &nbsp;）
+ * - 压平多空白
+ * - 截到 400 字符（覆盖 99% 的 Google News snippet，超长截断防止 metric JSON 爆炸）
+ */
+function cleanContentSnippet(input: string | undefined): string {
+  if (!input) return "";
+  const text = input
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.length > 400 ? `${text.slice(0, 400)}…` : text;
 }
 
 export const googleNewsScraper: Scraper = {

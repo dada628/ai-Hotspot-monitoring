@@ -56,6 +56,8 @@ async function fetchInfoQ(): Promise<RawHotItem[]> {
         author: e.creator ?? "",
         published: e.isoDate ?? e.pubDate ?? "",
         category: (e.categories ?? []).slice(0, 3).join(","),
+        // v9: 透传 RSS contentSnippet 作为原文摘录
+        excerpt: cleanContentSnippet(e.contentSnippet),
       },
     });
   }
@@ -64,6 +66,21 @@ async function fetchInfoQ(): Promise<RawHotItem[]> {
     throw new Error("InfoQ RSS 解析后无有效条目");
   }
   return items;
+}
+
+/** RSS contentSnippet 清洗（HTML 残余 / 压平空白 / 截 400 字） */
+function cleanContentSnippet(input: string | undefined): string {
+  if (!input) return "";
+  const text = input
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.length > 400 ? `${text.slice(0, 400)}…` : text;
 }
 
 export const infoqScraper: Scraper = {
