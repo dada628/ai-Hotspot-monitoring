@@ -18,6 +18,7 @@ import { classify } from "./prompts/classify";
 import { summarize } from "./prompts/summarize";
 import { score as scoreItem } from "./prompts/score";
 import { calcEngagementScore } from "@/lib/score";
+import { PipelineStepError, type PipelineStepName } from "./pipeline-step-error";
 import type { Category, AiEnrichedFields } from "./schemas";
 
 // ===================== 进度量化（v6 T2 · 模块级内存状态）=====================
@@ -272,38 +273,41 @@ async function processOne(
     })),
   );
 
-  // ----- (1) 分类 -----
-  const classifyResult = await classify({ title: h.title, platforms }, modelId);
-
-  // ----- (2) 摘要 -----
-  const summaryResult = await summarize(
-    {
-      title: h.title,
-      category: classifyResult.category,
-      sourceTitles,
-      sourceExcerpts,
-    },
-    modelId,
+  const classifyResult = await runPipelineStep("classify", () =>
+    classify({ title: h.title, platforms }, modelId),
   );
 
-  // ----- (3) 评分 -----
+  const summaryResult = await runPipelineStep("summarize", () =>
+    summarize(
+      {
+        title: h.title,
+        category: classifyResult.category,
+        sourceTitles,
+        sourceExcerpts,
+      },
+      modelId,
+    ),
+  );
+
   const ageHours = Math.max(
     0,
     (Date.now() - h.firstSeenAt.getTime()) / 3_600_000,
   );
-  const scoreResult = await scoreItem(
-    {
-      title: h.title,
-      summary: summaryResult.summary,
-      category: classifyResult.category,
-      metrics: h.sources.map((s) => ({
-        platform: s.platform,
-        display: formatMetricForAI(s.platform, parseMetric(s.metric)),
-      })),
-      ageHours,
-      engagementHint: h.engagementScore,
-    },
-    modelId,
+  const scoreResult = await runPipelineStep("score", () =>
+    scoreItem(
+      {
+        title: h.title,
+        summary: summaryResult.summary,
+        category: classifyResult.category,
+        metrics: h.sources.map((s) => ({
+          platform: s.platform,
+          display: formatMetricForAI(s.platform, parseMetric(s.metric)),
+        })),
+        ageHours,
+        engagementHint: h.engagementScore,
+      },
+      modelId,
+    ),
   );
 
   return {
@@ -318,6 +322,18 @@ async function processOne(
 }
 
 // ===================== 工具 =====================
+
+async function runPipelineStep<T>(
+  step: PipelineStepName,
+  fn: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new PipelineStepError(step, detail);
+  }
+}
 
 function unique<T>(arr: T[]): T[] {
   return Array.from(new Set(arr));

@@ -4,8 +4,9 @@
  * v9: 详情页长导读 200-500 字；输入除标题外增加各平台原文摘录（RSS snippet / github description 等）
  */
 
-import { generateObject } from "ai";
 import { getModel } from "../openrouter";
+import { generateWithRetry } from "../generate-with-retry";
+import { normalizeSummaryOutput } from "../normalize-outputs";
 import { SummarySchema, type SummaryOutput } from "../schemas";
 
 export interface SummarizeInput {
@@ -61,12 +62,13 @@ export async function summarize(
     );
   }
 
-  const { object } = await generateObject({
+  return generateWithRetry({
     model: getModel(modelId),
     schema: SummarySchema,
     system: SYSTEM_PROMPT,
     prompt: `请为以下热点生成结构化长导读：\n${lines.join("\n")}`,
+    normalize: normalizeSummaryOutput,
+    repairHints:
+      "硬性约束：summary 必须 80-800 个中文字符（目标 200-500 字）；keyPoints 必须 3-5 条，每条 2-80 字；entities 最多 8 个。禁止省略 keyPoints 或写过短的 summary。",
   });
-
-  return object;
 }

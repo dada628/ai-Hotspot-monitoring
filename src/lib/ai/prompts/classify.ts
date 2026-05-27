@@ -10,8 +10,9 @@
  *  - 失败时直接抛错，让 pipeline 决定是否跳过此条
  */
 
-import { generateObject } from "ai";
 import { getModel } from "../openrouter";
+import { generateWithRetry } from "../generate-with-retry";
+import { normalizeClassifyOutput } from "../normalize-outputs";
 import { ClassifySchema, type ClassifyOutput } from "../schemas";
 
 export interface ClassifyInput {
@@ -46,12 +47,13 @@ export async function classify(
     ? `\n出现平台：${input.platforms.join("、")}`
     : "";
 
-  const { object } = await generateObject({
+  return generateWithRetry({
     model: getModel(modelId),
     schema: ClassifySchema,
     system: SYSTEM_PROMPT,
     prompt: `请对以下热点分类：\n标题：${input.title}${platformLine}`,
+    normalize: normalizeClassifyOutput,
+    repairHints:
+      "硬性约束：tags 2-5 个，每个标签 1-12 个字符（中文优先，勿超长英文短语）；confidence 必须是 0-1 之间的小数（勿用 85 表示 85%）。",
   });
-
-  return object;
 }

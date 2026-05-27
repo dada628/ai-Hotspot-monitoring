@@ -18,6 +18,10 @@
 import { NextResponse } from "next/server";
 import { processBatch } from "@/lib/ai/pipeline";
 import { runAlertMatch } from "@/lib/ai/alert-match";
+import {
+  formatPipelineStepError,
+  parsePipelineStepFromMessage,
+} from "@/lib/ai/pipeline-step-error";
 
 export const dynamic = "force-dynamic";
 // 30 条 × 3 链 × 3s ≈ 4.5 分钟；留 5 分钟上限
@@ -88,10 +92,16 @@ export async function POST(req: Request) {
 
     if (idList.length > 0 && summary.succeeded === 0 && summary.failed > 0) {
       const firstErr = summary.results.find((r) => r.status === "failed");
+      const rawDetail = firstErr?.errorMsg ?? "未知错误";
+      const step = parsePipelineStepFromMessage(rawDetail);
+      const detail = step
+        ? formatPipelineStepError(step, rawDetail)
+        : rawDetail;
       return NextResponse.json(
         {
           error: "单条 AI 处理失败",
-          detail: firstErr?.errorMsg ?? "未知错误",
+          detail,
+          step,
         },
         { status: 500 },
       );

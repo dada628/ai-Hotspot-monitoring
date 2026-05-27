@@ -46,6 +46,15 @@ import {
   SummarySchema,
   CATEGORY_VALUES,
 } from "../src/lib/ai/schemas";
+import {
+  normalizeClassifyOutput,
+  normalizeScoreOutput,
+  normalizeSummaryOutput,
+} from "../src/lib/ai/normalize-outputs";
+import {
+  formatPipelineStepError,
+  parsePipelineStepFromMessage,
+} from "../src/lib/ai/pipeline-step-error";
 import { classify } from "../src/lib/ai/prompts/classify";
 import { summarize } from "../src/lib/ai/prompts/summarize";
 import { score as scoreItem } from "../src/lib/ai/prompts/score";
@@ -548,6 +557,62 @@ async function testSourceExcerpt() {
     } else {
       fail(g, "DB googlenews metric.excerpt 有效", "无含 excerpt 的 googlenews 记录 — 先跑 ingest");
     }
+  });
+}
+
+async function testAiNormalize() {
+  await group("AI · normalize / step error", async () => {
+    const g = "AI-NORM";
+
+    const longTag = normalizeClassifyOutput({
+      category: "tech",
+      tags: ["Microsoft Claude bill", "AI"],
+      confidence: 95,
+    });
+    const tagOk =
+      longTag.tags.every((t) => t.length <= 12) &&
+      longTag.confidence <= 1 &&
+      ClassifySchema.safeParse(longTag).success;
+    tagOk
+      ? pass(g, "normalizeClassify 截断 tags + confidence", "OK")
+      : fail(g, "normalizeClassify 截断 tags + confidence", JSON.stringify(longTag));
+
+    const shortKp = normalizeSummaryOutput({
+      summary:
+        "OpenAI 于本周发布新一代大模型，官方强调在代码与推理场景的性能提升，并调整 API 定价策略。此举被视为回应竞争对手近期密集迭代的信号。对开发者而言，上下文长度与工具调用稳定性是关键。",
+      keyPoints: ["新模型", "定价"],
+      entities: ["OpenAI"],
+    });
+    const sumOk =
+      shortKp.keyPoints.length >= 3 && SummarySchema.safeParse(shortKp).success;
+    sumOk
+      ? pass(g, "normalizeSummary 补齐 keyPoints", `${shortKp.keyPoints.length} 条`)
+      : fail(g, "normalizeSummary 补齐 keyPoints", SummarySchema.safeParse(shortKp).error?.message ?? "");
+
+    const longReason = normalizeScoreOutput({
+      score: 105,
+      trendVelocity: -3,
+      reasoning: "x".repeat(200),
+    });
+    const scoreOk =
+      longReason.score <= 100 &&
+      longReason.trendVelocity >= 0 &&
+      longReason.reasoning.length <= 160 &&
+      ScoreSchema.safeParse(longReason).success;
+    scoreOk
+      ? pass(g, "normalizeScore 截断 reasoning + clamp", "OK")
+      : fail(g, "normalizeScore 截断 reasoning + clamp", JSON.stringify(longReason));
+
+    const step = parsePipelineStepFromMessage(
+      "summarize: No object generated: response did not match schema.",
+    );
+    const formatted =
+      step === "summarize"
+        ? formatPipelineStepError(step, "No object generated: response did not match schema.")
+        : "";
+    formatted.includes("长导读") && formatted.includes("schema")
+      ? pass(g, "PipelineStepError 格式化", formatted.slice(0, 40))
+      : fail(g, "PipelineStepError 格式化", formatted || String(step));
   });
 }
 
@@ -1337,6 +1402,7 @@ async function main() {
   await testKeywords();
   await testPublishedAt();
   await testSourceExcerpt();
+  await testAiNormalize();
   await testScrapersIsolated();
   await testDatabaseIntegrity();
   await testAiPipelineStatic();

@@ -10,8 +10,9 @@
  *  - 把本地兜底分（engagementHint）作为"基线参考"传给 AI，让它在此基础上调整
  */
 
-import { generateObject } from "ai";
 import { getModel } from "../openrouter";
+import { generateWithRetry } from "../generate-with-retry";
+import { normalizeScoreOutput } from "../normalize-outputs";
 import { ScoreSchema, type ScoreOutput } from "../schemas";
 
 export interface ScoreInputMetric {
@@ -80,12 +81,13 @@ export async function score(
     );
   }
 
-  const { object } = await generateObject({
+  return generateWithRetry({
     model: getModel(modelId),
     schema: ScoreSchema,
     system: SYSTEM_PROMPT,
     prompt: `请对以下热点综合打分：\n${lines.join("\n")}`,
+    normalize: normalizeScoreOutput,
+    repairHints:
+      "硬性约束：score 与 trendVelocity 均为 0-100 的整数；reasoning 不超过 160 个字符（约 80 字）。",
   });
-
-  return object;
 }
