@@ -11,6 +11,7 @@ import { Spotlight } from "@/components/aceternity/Spotlight";
 import { Sparkles } from "@/components/aceternity/Sparkles";
 import { BorderBeam } from "@/components/aceternity/BorderBeam";
 import { ALL_PLATFORMS, PLATFORM_META } from "@/lib/platforms";
+import { getSingleAiAction } from "@/lib/single-ai-action";
 
 /** AI Pipeline 进度快照（与 src/lib/ai/pipeline.ts 的 ProgressSnapshot 同结构） */
 interface ProgressSnapshot {
@@ -811,6 +812,10 @@ export default function HomePage() {
                 const effectiveScore = item.score > 0 ? item.score : item.engagementScore;
                 const sev = scoreToSeverity(effectiveScore);
                 const hotness = computeHotness(item.sources, effectiveScore);
+                const singleAi = getSingleAiAction({
+                  processedAt: item.processedAt,
+                  summary: item.summary,
+                });
                 return (
                   <HotItemCard
                     key={item.id}
@@ -836,10 +841,11 @@ export default function HomePage() {
                     reference="direct"
                     hotness={hotness}
                     onAiProcess={
-                      !item.processedAt
+                      singleAi
                         ? () => processOneItem(item.id)
                         : undefined
                     }
+                    aiProcessLabel={singleAi?.label}
                     aiProcessing={processingItemId === item.id}
                     aiDisabled={isBusy}
                   />

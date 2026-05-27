@@ -9,6 +9,7 @@ import { Spotlight } from "@/components/aceternity/Spotlight";
 import { BorderBeam } from "@/components/aceternity/BorderBeam";
 import { PLATFORM_META, type PlatformKey } from "@/lib/platforms";
 import { collectSourceExcerpts } from "@/lib/source-excerpt";
+import { getSingleAiAction } from "@/lib/single-ai-action";
 
 interface HotSpotSource {
   id: string;
@@ -156,6 +157,13 @@ export default function HotSpotDetailPage({
     }
   };
 
+  const singleAi = data
+    ? getSingleAiAction({
+        processedAt: data.processedAt,
+        summary: data.summary,
+      })
+    : null;
+
   return (
     <main className="relative min-h-screen">
       {/* 顶部导航 */}
@@ -196,7 +204,8 @@ export default function HotSpotDetailPage({
             data={data}
             related={related}
             relatedLoading={relatedLoading}
-            onAiProcess={!data.processedAt ? processOneItem : undefined}
+            onAiProcess={singleAi ? processOneItem : undefined}
+            aiProcessLabel={singleAi?.label ?? "AI 处理"}
             aiProcessing={aiProcessing}
             aiMessage={aiMessage}
           />
@@ -216,6 +225,7 @@ function DetailContent({
   related,
   relatedLoading,
   onAiProcess,
+  aiProcessLabel = "AI 处理",
   aiProcessing = false,
   aiMessage,
 }: {
@@ -223,6 +233,7 @@ function DetailContent({
   related: RelatedResponse | null;
   relatedLoading: boolean;
   onAiProcess?: () => void;
+  aiProcessLabel?: string;
   aiProcessing?: boolean;
   aiMessage?: string | null;
 }) {
@@ -282,6 +293,39 @@ function DetailContent({
           <h1 className="text-2xl md:text-3xl font-bold text-white leading-tight tracking-tight">
             {data.title}
           </h1>
+
+          {onAiProcess && (
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                className="btn btn-primary inline-flex items-center gap-2 text-sm"
+                disabled={aiProcessing}
+                onClick={onAiProcess}
+                title="单条跑 AI 分类 / 长导读 / 评分（约 15–40 秒）"
+              >
+                {aiProcessing ? (
+                  <>
+                    <SpinnerIcon /> 处理中…
+                  </>
+                ) : (
+                  <>
+                    <SparklesIcon /> {aiProcessLabel}
+                  </>
+                )}
+              </button>
+              {aiMessage && (
+                <span
+                  className={`text-xs ${
+                    aiMessage.includes("失败")
+                      ? "text-[var(--color-danger-bright)]"
+                      : "text-[#67e8f9]"
+                  }`}
+                >
+                  {aiMessage}
+                </span>
+              )}
+            </div>
+          )}
 
           {/* v8 新增：发布时间 / 抓取时间 二排小字 */}
           <div className="mt-3 flex items-center gap-4 text-xs text-[var(--color-text-muted)] flex-wrap">
@@ -372,7 +416,7 @@ function DetailContent({
           </p>
           {data.summary.length < 150 && aiProcessed && (
             <p className="mt-3 text-xs text-[var(--color-text-muted)] border-t border-[var(--color-line)] pt-3">
-              本条为旧版短摘要（AI 处理于 v9 之前）· 重新点首页「扫描+AI」可生成长导读
+              本条为旧版短摘要（AI 处理于 v9 之前）· 点击上方「生成长导读」单条重跑即可
             </p>
           )}
         </section>
@@ -395,21 +439,10 @@ function DetailContent({
                 </>
               ) : (
                 <>
-                  <SparklesIcon /> AI 处理本条
+                  <SparklesIcon /> {aiProcessLabel}
                 </>
               )}
             </button>
-          )}
-          {aiMessage && (
-            <p
-              className={`mt-3 text-xs ${
-                aiMessage.startsWith("AI 处理失败")
-                  ? "text-[var(--color-danger-bright)]"
-                  : "text-[#67e8f9]"
-              }`}
-            >
-              {aiMessage}
-            </p>
           )}
         </section>
       )}

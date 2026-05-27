@@ -7,6 +7,7 @@ import { Badge } from "./Badge";
 import { BorderBeam } from "./aceternity/BorderBeam";
 import { PLATFORM_META, type PlatformKey } from "@/lib/platforms";
 import { extractSourceExcerpt } from "@/lib/source-excerpt";
+import type { SingleAiActionLabel } from "@/lib/single-ai-action";
 
 interface SourceLite {
   platform: string;
@@ -43,8 +44,9 @@ export interface HotItemProps {
   hotness?: number;
   /** AI Pipeline 输出的爆发速度（分/小时），> 阈值时显示飙升徽章 */
   trendVelocity?: number | null;
-  /** 单条 AI 处理（仅未处理条目由父组件传入） */
+  /** 单条 AI 处理（由父组件按 getSingleAiAction 决定是否传入） */
   onAiProcess?: () => void;
+  aiProcessLabel?: SingleAiActionLabel;
   aiProcessing?: boolean;
   aiDisabled?: boolean;
 }
@@ -221,6 +223,7 @@ export function HotItemCard({
   hotness,
   trendVelocity,
   onAiProcess,
+  aiProcessLabel = "AI 处理",
   aiProcessing = false,
   aiDisabled = false,
 }: HotItemProps) {
@@ -456,7 +459,7 @@ export function HotItemCard({
                 </>
               ) : (
                 <>
-                  <SparkMiniIcon /> AI 处理
+                  <SparkMiniIcon /> {aiProcessLabel}
                 </>
               )}
             </button>
