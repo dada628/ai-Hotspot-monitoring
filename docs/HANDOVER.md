@@ -1,7 +1,7 @@
 # HotPulse · AI 项目交接文档
 
 > **此文档面向"下一个 AI"** —— 新开对话时让 AI 快速恢复完整项目上下文，避免重新理解或踩历史决策的坑。
-> 最后更新：2026-05-27（**v7**，含关键词中心 + 变体扩展 + 接入 google-news/twitter/hackernews，召回量 +22%）
+> 最后更新：2026-05-27（**v9**，详情页 AI 长导读 200-500 字 · RSS excerpt 喂料 + source-excerpt 过滤 · 原文摘录区块）
 
 ---
 
@@ -15,11 +15,11 @@
 | **包名** | `ai-hotspot-monitoring`（`package.json`） |
 | **运行平台** | Windows（PowerShell），本地开发 |
 | **GitHub 仓库** | <https://github.com/dada628/ai-Hotspot-monitoring>（main 分支已托管） |
-| **当前阶段** | Phase 1+2+2.5+2.6+2.7+2.8+2.9 ✅ · **Phase 3 AI Pipeline ✅** · **Phase 2.X 详情页 + 相关推荐 + 多类目扩展 ✅** · **Phase 2.Y v5 信息流交互修复 + 科技源头过滤 ✅** · **Phase 2.Z v6 UX 优化第一波 ✅** · **Phase 2.AA v7 关键词中心 + 变体扩展 ✅** · Phase 4 用户认证 UI 待开工 |
-| **测试** | `npx tsx scripts/e2e-test.ts` —— **70 项 PASS**（v6 62 项 + v7 新增 8 项 Keywords 用例） |
+| **当前阶段** | Phase 1+2+2.5+2.6+2.7+2.8+2.9 ✅ · **Phase 3 AI Pipeline ✅** · **Phase 2.X 详情页 + 相关推荐 + 多类目扩展 ✅** · **Phase 2.Y v5 信息流交互修复 + 科技源头过滤 ✅** · **Phase 2.Z v6 UX 优化第一波 ✅** · **Phase 2.AA v7 关键词中心 + 变体扩展 ✅** · **Phase 2.AB v8 卡片信息密度大改 ✅** · **Phase 2.AC v9 AI 长导读 ✅** · Phase 4 用户认证 UI 待开工 |
+| **测试** | `npx tsx scripts/e2e-test.ts` —— **87 项**（v8 79 + v9 新增 8 项 SourceExcerpt）；通常 **85 PASS**（2 项 twitter 429 与改动无关） |
 | **dev URL** | <http://localhost:3000> |
 | **AI 默认模型** | `deepseek/deepseek-v3.2`（OpenRouter，含 response-healing 插件） |
-| **HEAD commit** | `b79afb0` feat(scrapers): 接入关键词中心·google-news/twitter/hackernews 召回量 +22% |
+| **HEAD commit** | `e6be06b` feat(detail+e2e): 详情页 AI 长导读 + 原文摘录区块 + e2e 8 项 |
 
 ---
 
@@ -91,21 +91,21 @@ ai-Hotspot monitoring/
 │   ├── DESIGN.md                     # ADR D-001 ~ D-012
 │   └── HANDOVER.md                   # ← 你正在读
 ├── scripts/
-│   ├── e2e-test.ts                   # ★ v7 升至 70 项（v6 62 + v7 新增 8 项 Keywords 用例）
+│   ├── e2e-test.ts                   # ★ v9 升至 87 项（v8 79 + v9 新增 8 项 SourceExcerpt 用例）
 │   ├── backfill-engagement-score.ts  # 一次性回填工具（公式调整后可重跑）
 │   ├── cleanup-non-tech.ts           # ★ v5 新增 · 一次性清理非科技 HotSpot（dry-run/--apply）
 │   ├── debug-stats.ts                # ★ 本地诊断脚本（已在 .gitignore，不进 git）
 │   ├── debug-scan.ts                 # ★ 本地扫描验证（已在 .gitignore）
 │   └── debug-ai-smoke.ts             # ★ v3 新增 · AI 链 smoke 测试（已在 .gitignore）
 ├── prisma/
-│   ├── schema.prisma                 # ★ v4 新增 keyPoints / entities / processedAt 字段
+│   ├── schema.prisma                 # ★ v8 新增 HotSpot.publishedAt + HotSpotSource.publishedAt（v4 已有 keyPoints/entities/processedAt）
 │   ├── seed.ts
 │   ├── migrate-default-model.ts
 │   └── dev.db                        # SQLite，运行时生成
 ├── src/
 │   ├── app/
 │   │   ├── page.tsx                  # ★ v6 重写 · phase 状态机 + 一键扫描+AI 主按钮 + 下拉 3 选项 + polling 进度
-│   │   ├── hotspot/[id]/page.tsx     # ★ v4 新增 · 单条详情页（单列长页布局）
+│   │   ├── hotspot/[id]/page.tsx     # ★ v9 修改 · 「AI 长导读」+「原文摘录」；v8 publishedAt；v4 详情骨架
 │   │   ├── admin/ingest/page.tsx     # 数据采集控制台
 │   │   ├── dashboard/page.tsx        # Phase 4 占位
 │   │   ├── login/page.tsx            # Phase 4 占位
@@ -125,7 +125,7 @@ ai-Hotspot monitoring/
 │   │   ├── StatCard.tsx              # 内嵌 card-spotlight 鼠标跟手光晕
 │   │   ├── Tabs.tsx
 │   │   ├── PillSelect.tsx
-│   │   ├── HotItemCard.tsx           # ★ v4 修改 · 标题点击跳 /hotspot/[id]，底部"原文 ↗"小链接
+│   │   ├── HotItemCard.tsx           # ★ v8 大改 + v9 · 底部两行 + AI/原文双 badge（原文走 source-excerpt 过滤）；首页 AI 摘要仍 line-clamp-2
 │   │   ├── Badge.tsx
 │   │   └── aceternity/               # ★ Aceternity UI（自存，单文件复制式）
 │   │       ├── Spotlight.tsx         # ⚠️ 注意：无 fill prop，只接受 gradientFirst/Second/Third
@@ -136,7 +136,9 @@ ai-Hotspot monitoring/
 │       ├── auth.ts
 │       ├── db.ts
 │       ├── platforms.ts              # 9 平台元数据
-│       ├── ingest.ts                 # 抓取→入库；engagementScore 计算
+│       ├── ingest.ts                 # ★ v8 修改 · 写入 source.publishedAt；HotSpot.publishedAt 取所有 source 中最早
+│       ├── published-at.ts           # ★ v8 新增 · 9 平台 metric → Date 统一解析（含脏数据范围校验）
+│       ├── source-excerpt.ts         # ★ v9 新增 · 从 metric 提取有效摘录 + 过滤 InfoQ 占位符；供 AI / 卡片 / 详情页复用
 │       ├── score.ts                  # 本地兜底评分（9 平台公式 + 24h 衰减）
 │       ├── tech-filter.ts            # ★ v6 扩词到 ~295（+53 工程/AI 术语，删 research 防误命中）
 │       ├── scrapers/
@@ -147,22 +149,22 @@ ai-Hotspot monitoring/
 │       │   ├── github.ts             # GitHub trending（100% 科技，不过滤）
 │       │   ├── weibo.ts              # ★ v5 修改 · 出口套 isTechRelated（标题）
 │       │   ├── zhihu.ts              # ★ v5 修改 · 出口套 isTechRelated（标题 + excerpt）
-│       │   ├── bilibili.ts           # ★ v5 修改 · tname 分区白名单（科技 + 知识）
-│       │   ├── twitter.ts            # ★ v7 修改 · 路数 2→3（en 拆 primary+secondary）
+│       │   ├── bilibili.ts           # ★ v8 修改 · metric 加 publishedAt: pubdate（Unix 秒）
+│       │   ├── twitter.ts            # ★ v8 修改 · metric 加 publishedAt: createdAt（ISO/Twitter 旧格式）
 │       │   ├── hackernews.ts         # ★ v7 修改 · Algolia 单路改用 (primary OR secondary) 长 OR
-│       │   ├── reddit.ts             # r/LocalLLaMA + r/MachineLearning（100% AI，不过滤）
-│       │   ├── google-news.ts       # ★ v7 修改 · AI 路 1→2（primary+secondary），总路数 5→7
-│       │   └── infoq.ts              # InfoQ 中文 RSS（100% 科技，不过滤）
+│       │   ├── reddit.ts             # ★ v8 修改 · metric 加 publishedAt: created_utc（Unix 秒）
+│       │   ├── google-news.ts       # ★ v9 修改 · metric.excerpt ← RSS contentSnippet（~77 字，实测有效）
+│       │   └── infoq.ts              # ★ v9 修改 · metric.excerpt ← contentSnippet（多为「点击查看原文>」，v9 过滤后不喂 AI）
 │       └── ai/                       # ★ v3 全新目录（AI Pipeline）
 │           ├── models.ts             # 7 个国产模型 + DEFAULT_MODEL_ID
 │           ├── openrouter.ts         # ★ v3 · OpenRouter 客户端封装（response-healing 插件）
-│           ├── schemas.ts            # ★ v3 · Zod schemas（Classify/Score/Summary）+ AiEnrichedFields 类型
-│           ├── pipeline.ts           # ★ v6 修改 · 增加模块级 currentProgress + getCurrentProgress（供 status route 读）
+│           ├── schemas.ts            # ★ v9 修改 · SummarySchema.summary 80-800 字长导读；keyPoints 至少 3 条
+│           ├── pipeline.ts           # ★ v9 修改 · summarize 前 collectSourceExcerpts（含 github.description）
 │           ├── alert-match.ts        # ★ v3 · 订阅规则匹配 + Alert 创建/更新
 │           └── prompts/
 │               ├── classify.ts      # ★ v3 · category + tags
 │               ├── score.ts         # ★ v3 · 0-100 + trendVelocity
-│               └── summarize.ts     # ★ v3 · summary + keyPoints + entities
+│               └── summarize.ts     # ★ v9 大改 · 200-500 字长导读 prompt + sourceExcerpts 入参
 ├── types/
 │   └── next-auth.d.ts
 ├── .gitignore                        # 含 debug-stats / debug-scan / debug-ai-smoke 排除
@@ -189,6 +191,8 @@ ai-Hotspot monitoring/
 | **2.Y · 信息流交互修复 + 科技过滤** | ✅ **v5 完成** | 5 种排序差异化（hotness/importance/relevance/2 时间）+ time 窗口生效 + relevance 需 keyword + 科技相关性源头过滤（tech-filter + 5 scrapers 收紧 + 清理脚本，DB 710→337） |
 | **2.Z · UX 优化第一波（词表 + 统计卡 + 一键按钮）** | ✅ **v6 完成** | tech-filter 扩到 ~295（+53 工程/AI 术语，删 research） + 首页"监控词"换"AI 24h 覆盖率"卡 + 一键「扫描+AI」按钮（chevron 下拉 3 选项）+ `/api/process/status` 进度轮询（2s polling） |
 | **2.AA · 关键词中心 + 变体扩展（解决 Codex 5.3 / GPT-Codex-5.3 一类死板）** | ✅ **v7 完成** | 新建 `src/lib/scrapers/keywords.ts`（32 entity / 13 family / 含 OpenAI Codex 系列 + Anthropic 4.5 + Gemini 3 + DeepSeek V3.2 + Qwen3 + Grok 4 + Kimi K2 + GLM-4.6 + 工程工具栈）+ autoVariants（空格 ↔ 连字符）+ buildKeywordQueries（primary+secondary 智能分桶）+ 接入 google-news（5→7 路）/ twitter（2→3 路）/ hackernews（合并长 OR）；召回量 +22%（365→448） |
+| **2.AB · 卡片信息密度大改（解决"必须跳原文确认时效"）** | ✅ **v8 完成** | schema 加 publishedAt（HotSpot + HotSpotSource）+ 新增 `src/lib/published-at.ts` 9 平台 metric→Date 统一解析 + 补 reddit/twitter/bilibili 3 个 scraper 提取上游字段 + HotItemCard 底部拆两行 + AI 摘要/原文摘录双 badge + 作者/媒体徽章 + 飙升趋势徽章（trendVelocity ≥ 8/h）+ 紧凑互动指标（评论/浏览） + 详情页 Hero/SourceRow/元数据栏同步显示发布时间；e2e 70→79 PASS |
+| **2.AC · AI 长导读（解决"详情页摘要太短看不懂"）** | ✅ **v9 完成** | 根因：AI 只看标题 + schema 限 220 字 → 空话摘要。google-news/infoq scraper 透传 `metric.excerpt`；新增 `source-excerpt.ts` 过滤无效摘录；pipeline 喂 github.description 等；`SummarySchema` 扩到 80-800 字 + summarize prompt 结构化（背景/核心/影响/读者）；详情页「AI 长导读」+「原文摘录」区块；旧摘要 <150 字提示重跑 AI；e2e 79→87 |
 | 4 · 用户认证 UI + Dashboard | ⏳ **下一步** | 现在 `/login` `/dashboard` 还是占位 |
 | 5 · 定时任务 + 预警 + 设置 | ⏳ | 模型动态切换在这里做 |
 | 6 · 集成测试 + 验收 | ⏳ | 网页版正式 release |
@@ -241,7 +245,7 @@ ai-Hotspot monitoring/
               │                       │                        │
               │   processBatch()      │                        │
               │     ├─→ classify  →  category + tags           │
-              │     ├─→ summarize →  summary + keyPoints + entities │ ← v4 持久化后两个
+              │     ├─→ summarize →  summary(长导读) + keyPoints + entities │ ← v9 喂 sourceExcerpts
               │     └─→ score     →  0-100 score + trendVelocity    │
               │                       │                        │
               │   写回 HotSpot：category/tags/summary/score/   │
@@ -310,6 +314,17 @@ ai-Hotspot monitoring/
 | **D-032** | **v7 · smart_merge：primary（高互动门槛）+ secondary（低门槛细分变体）** | Twitter API 计次计费，全部细分模型扔到一条 query 会让小众讨论被高门槛淹没。primary 用 `min_faves:200` 保品质，secondary 用 `min_faves:50` 接受细分版本号的小众讨论。Google News 把 AI 类目从 1→2 路实现同一逻辑。HN Algolia 用嵌套 OR `(primary OR secondary)` 单路合并（Algolia 已自带 points>30 过滤） |
 | **D-033** | **v7 · "AI" 这个广义词降到 secondary** | 用户 Q6 选 demote。理由：plain "AI" 太宽（与 said/paid 字符冲突已在 v5 解决，但 query 中独占 12% 字符）；具体模型名（ChatGPT/Claude/Gemini）已足够覆盖大多数 AI 新闻，把 secondary 留给"AI agent / RAG / RLHF"等更具体的复合词更划算 |
 | **D-034** | **v7 · HN/Twitter 信任白名单保留** | v5 把 HN/Twitter 加入清理脚本信任白名单，根本原因是当时关键词覆盖不足。v6 扩词到 ~295、v7 又通过 keywords.ts 覆盖了 OpenAI Codex / Anthropic 4.5 / DeepSeek V3.2 等专业词。但保留信任白名单为防御性策略：英文工程社区还会持续出现新名词，宁可放过少量误读也别误删（cleanup-non-tech.ts 设计就是"信任优先"） |
+| **D-035** | **v8 · publishedAt 字段拆 HotSpot + HotSpotSource 两层** | 因为单一 HotSpot 可能跨多 source 合并，每个 source 的发布时间可能不同（同篇报道 The Verge 比 TechCrunch 早 1h 之类）。HotSpot.publishedAt 取所有 source 中**最早**（更接近原始发表时刻），HotSpotSource.publishedAt 保留各源原值用于详情页"多源对比"。索引建在 HotSpot.publishedAt（未来若加"按发布排序"用）|
+| **D-036** | **v8 · 9 平台 metric→Date 解析集中在 lib/published-at.ts** | 字段名混乱（googlenews/infoq 用 `published` ISO、hackernews 用 `time` Unix 秒、reddit/bilibili 补 `publishedAt` Unix 秒、twitter 补 `publishedAt` ISO/Twitter 旧格式、weibo/zhihu/github 无语义），如果分散到 ingest.ts 各 case 写会很乱。集中在 `extractPublishedAt(platform, metric)` 一处，含**脏数据范围校验**（1980 前 / 未来 24h 后视为脏数据），9 平台行为可测、一致 |
+| **D-037** | **v8 · AI 摘要 + 原文摘录上下两行双 badge（用户选 Q3-C）** | 用户图片明确"需要确认是原始描述还是 AI 生成的"。最初考虑只加 badge（A）或 AI 优先 fallback（B），用户选 C 两行同显，给"还能交叉验证 AI 是否捏造"的能力。逻辑：AI 摘要 = `processedAt != null && summary` 非空时显示；原文摘录从 source.metric.excerpt/desc 或退化到 rawTitle，与 AI 摘要或主标题相同时**不重复显示**避免冗余 |
+| **D-038** | **v8 · HotItemCard 内部封装 9 平台 metric 提取（不下沉到 lib）** | `pickPrimaryMetric / pickSecondaryMetrics / pickAuthorLabel` 三个函数当前只服务于卡片，且未来如果详情页要复用再抽到 `lib/platform-display.ts`。本期不预先抽象避免接口设计错位（YAGNI）。weibo/zhihu/github 的"作者"概念不存在，所以这些平台不显示作者徽章 |
+| **D-039** | **v8 · 卡片 sources.metric 从字符串改为对象传递（page.tsx 改动）** | 老版本是 page.tsx 先 `formatMetric()` 格式化成 `"♥ 1.2万"` 字符串再传给卡片，卡片只能显示一个指标。新版本需要在卡片里同时取主指标 + 评论数 + 浏览数 + 作者 + 媒体名，必须传整个 metric 对象。page.tsx 里移除已无人使用的 `formatMetric` 函数 |
+| **D-040** | **v8 · 飙升徽章阈值 trendVelocity ≥ 8 分/小时** | trendVelocity 字段早就有，前端没用。阈值参考 detail 页 `velocityHint` 的"温和上升≥20 / 快速上升≥50 / 正在爆发≥80"梯度，卡片视觉应该比详情页更敏感（毕竟卡片就一眼）：取 8 让多数有持续讨论的热点都能上徽章；不达阈值不显示，避免视觉噪音 |
+| **D-041** | **v9 · 详情页长导读 200-500 字，首页卡片仍 line-clamp-2** | 用户痛点在详情页「看不懂热点」，不是首页列表。扩 `HotSpot.summary` 写入长度（仍用原列，无 schema 迁移）但首页 `HotItemCard` 继续 `line-clamp-2` 只露 ~70 字，避免卡片过高。详情页区块改名为「AI 长导读」 |
+| **D-042** | **v9 · 不新增 deepAnalysis 字段，一次 summarize 调用** | 用户选 Q3-B：不加独立字段、不 double LLM。长导读直接写进现有 `summary` + `keyPoints`（条数 min 3、单条 max 80）。旧数据 `summary.length < 150` 且已 `processedAt` 时详情页显示「v9 之前旧版，请重新扫描+AI」 |
+| **D-043** | **v9 · 原文素材集中在 lib/source-excerpt.ts** | `isUsefulExcerpt`：< 20 字或含「点击查看原文」→ 无效。`extractSourceExcerpt` 读 excerpt/description/desc。`collectSourceExcerpts` 多源去重。pipeline / HotItemCard / 详情页共用，避免 InfoQ 占位符进 AI 或 UI |
+| **D-044** | **v9 · scraper 只补 RSS 两源，pipeline 额外读已有 github.description** | 用户 Q2 选只改 google-news+infoq。实测：googlenews excerpt ~77 字有效；**infoq excerpt 100% 为「点击查看原文>」无效**；github description ~109 字早已在 metric 但未喂 AI → v9 C2 在 pipeline 层串通，无需再改 github scraper。reddit selftext / twitter 全文本次未做 |
+| **D-045** | **v9 · 不重跑旧 77 条 AI 摘要** | 用户 Q4-A：批量重跑成本高。新 ingest + 新点「扫描+AI」的条目自动得长导读；旧条目不自动升级 |
 
 ---
 
@@ -376,25 +391,70 @@ ai-Hotspot monitoring/
 
 33. **HN Algolia 嵌套 OR 长度风险**：`(primary OR secondary)` 合并约 1400 字符。Algolia REST API 实测可处理，但接近上限。**解决**：把 `maxChars` 改为 700/各（默认 800 → 700），合并 1400 字符是安全区。再大需要分多路调。
 
+### v8 新踩坑（卡片信息密度 + publishedAt 贯通）
+
+34. **PowerShell `npm run dev` 用 `Out-String` 会卡住不返回**：本地启 dev server 第一次用 `npm run dev 2>&1 | Out-String` 让 background shell 跑了 50s 都没匹配到 "Ready in" pattern。**原因**：`Out-String` 会等到 stdout 流结束才一起输出，dev server 是长进程不会结束。**解决**：直接 `npm run dev`（不带 Out-String），让输出按行 flush 到 terminal 文件，AwaitShell pattern 才能匹配到。
+
+35. **僵尸 dev server 占着 3000 端口不响应**：之前对话遗留的 next dev 进程仍占用 3000 端口（PID 6968），但已 hung（Invoke-WebRequest 超时）。新启 dev server 默认让到 3001，但 e2e 测的是 3000 → fetch failed EACCES。**解决**：`taskkill /PID <pid> /F`（next 自己会在错误信息里告诉你 PID 是多少）。HANDOVER §1.3 第 4 条 "Windows 文件锁 EPERM" 是同类问题的近亲，下次踩坑时先看是不是僵尸进程。
+
+36. **SQLite 加新可空列不需要 migration**：DESIGN.md 历史上一直用 `prisma db push`，加 `publishedAt DateTime?` 直接同步即可，旧数据自动是 NULL，无数据迁移风险。这次本可能担心索引重建会慢，实测 456 条数据下 db push 99ms 完事。如果 PG 生产化时数据量大需要先做 dry-run。
+
+37. **`StrReplace` 多片段连改时整段定位**：v8 改 page.tsx 时一次性删掉 `formatMetric` 函数 + 改 HotItemCard 调用 + 改 Hotspot/HotspotSource 类型 = 3 个分离改点。如果都用一次大 StrReplace 容易匹配失败（中间穿插的代码会让 old_string 长到 100+ 行）。**经验**：v6 踩坑笔记里写过 "拆 1 个 StrReplace 改一处"，这次严格执行，每个改点 5-15 行上下文，全部一次匹配成功。
+
+38. **HotItemCard 重构时 sources.metric 类型契约变更要同步 page.tsx**：HotItemCard 把 `metric` 从 `string` 改成 `Record<string, unknown> | null` 后，page.tsx 里 `sources.map(s => ({ ...s, metric: formatMetric(...) }))` 会编译报错（类型不匹配）。**解决**：page.tsx 同步改 `metric: parseMetric(s.metric)` 直接传对象。type-check 在这里救了一次（开发期立即发现）。
+
+39. **e2e 时 dev server 必须先开**：HANDOVER 之前没明确写"跑 e2e 之前先开 dev server"，结果第一次 v8 跑 e2e 时所有页面请求 fetch failed。**解决**：跑 e2e 前先 `npm run dev`（或者把 e2e 拆成"无网络"和"有网络"两组，但本期不做）。已在 v8 流程里养成习惯：先看终端是否有活跃 dev server，没有就先启动再跑测试。
+
+40. **Reddit `created_utc` 不要重新当字段名用 `created` 写到 metric**：第一版我下意识把字段重命名为 metric.created（更短），但 `extractPublishedAt(reddit)` 这一侧也要约定字段名。统一用 `metric.publishedAt` 三个 scraper（reddit/twitter/bilibili）做同名，集中在 `lib/published-at.ts` 一处读取，避免字段名漂移。**经验**：跨多个文件的字段契约约定，要尽早定一个明确命名再 commit。
+
+### v9 新踩坑（AI 长导读 + 原文素材）
+
+41. **InfoQ RSS `contentSnippet` 不是摘要，是占位符**：实测 10/10 条 excerpt 仅 `点击查看原文>`（7 字）。用户截图 Oracle XStream 来自 InfoQ，AI 只能 reword 标题 → 88 字空话。**解决**：`isUsefulExcerpt` 过滤；长导读 prompt 强调「无摘录时从长标题深挖」；若真要 InfoQ 正文需单独做页面抓取（列入待办）。
+42. **google-news excerpt ≈ 标题复读，但仍值得喂 AI**：snippet 均 ~77 字，多为「标题 + 媒体名」，不是独立正文，但比纯标题多一层媒体语境。**不要**指望 RSS  alone 解决所有源的深度。
+43. **github.description 是 v9 最高性价比素材（无需改 scraper）**：已在 metric 里，pipeline `collectSourceExcerpts` 即可读到（均 ~109 字，最长 210）。v9 开发中一度只盯 RSS 两源，采样后发现 github 才是关键补充。
+44. **扩 summary schema 后旧 e2e 用例会挂**：`SummarySchema.summary.min(80)` 后，原先 20 字测试对象必须换成 80+ 字样本；同时加「拒绝过短」反向用例。
+45. **用户选「不重跑旧 AI」→ 详情页必须 UX 提示**：否则用户以为 bug。`summary.length < 150 && processedAt` 时显示「v9 之前旧版短摘要，请重新扫描+AI」。
+
 ---
 
-## 8. 数据库现状（2026-05-27 00:30 快照 · v7 完成后）
+## 8. 数据库现状（2026-05-27 02:30 快照 · v9 完成后）
 
 ```
-HotSpotSource 分布（448 条 HotSpot · v6 365 → v7 448，+83 条 +22% 主要来自 google-news / twitter 扩词）：
-  googlenews   137   ← +47  v7 AI 路 1→2 拆 primary+secondary
-  twitter      105   ← +27  v7 路数 2→3
-  hackernews    55   ←  0   Algolia points>30 硬过滤未变
-  reddit        63   ← +8
-  infoq         30
+HotSpotSource 分布（504 条 HotSpot · v8 461 → v9 504，+43 主要来自 v9 e2e 全量 ingest）：
+  googlenews   170   ← v9 ingest 更新 + excerpt 字段
+  twitter      107
+  hackernews    58
+  reddit        71
+  infoq         34
   github        23
-  zhihu         17
-  weibo         12   ← +1
+  zhihu         20
+  weibo         15
   bilibili       6
 
-HotSpot 字段填充情况：
-  HotSpot.processedAt 非空: 77 条（17.2% 已 AI 处理）
-  aiCoverage24h:           77 / 424 = 18.2%（前端"AI 处理覆盖"卡显示）
+metric.excerpt 写入率（v9 C1 后新 ingest 的 googlenews/infoq）：
+  googlenews  新数据 100% 含 excerpt，均 ~77 字（多为标题+媒体名，仍有用）
+  infoq       新数据 100% 含 excerpt 字段，但内容 100% 为「点击查看原文>」（无效，见 D-043）
+  github      description 早已存在，v9 pipeline 开始读取
+
+HotSpot.summary 长度（v9 前 AI 处理的 ~77 条仍为短摘要）：
+  旧版 processedAt 非空且 summary < 150 字：需用户手动「扫描+AI」重跑才变长导读
+  v9 之后新 AI 处理：目标 200-500 字（schema min 80 / max 800）
+
+HotSpot.publishedAt 写入率（v8 新字段，仅对 v8 之后的 ingest 生效）：
+  bilibili     0%（本次 ingest 抓回 0 条，0/6）
+  github       0%（平台无发布时间语义，符合 D-036）
+  googlenews  25%（v8 之前数据未写入；新数据 100% 写入）
+  hackernews   5%（v8 之前数据未写入；新数据 100% 写入）
+  infoq       67%（v8 之前数据未写入；新数据 100% 写入）
+  reddit      44%（v8 之前数据未写入；新数据 100% 写入）
+  twitter      0%（v8 e2e 一次 ingest 后旧数据仍占多数）
+  weibo        0%（平台无发布时间语义，符合 D-036）
+  zhihu        0%（平台无发布时间语义，符合 D-036）
+
+HotSpot 其他字段填充情况：
+  HotSpot.processedAt 非空: 77 条（16.7% 已 AI 处理）
+  aiCoverage24h:           ~74 / 437 ≈ 17%（前端"AI 处理覆盖"卡显示）
+  HotSpot.publishedAt 非空: 87 条（19% 已写入；新进入数据会自动累积）
   HotSpot.score > 0:       77 条
   HotSpot.summary 非空:     77 条
   HotSpot.keyPoints / entities: 77 条
@@ -410,14 +470,16 @@ IngestLog        持续累积（每次 ingest 一条 per 平台）
   - 进度：前端每 2s 轮询 /api/process/status，按钮显示"处理 12/20"
   - 想拆开执行：点 chevron 下拉，选"仅扫描" / "仅 AI 处理" / "一键全套"
 
-注 2：v5/v6 ingest 入库被 tech-filter 过滤；v7 在搜索阶段引入 keywords.ts
-进一步精准定位"细分模型版本号变体"（Codex 5.3 / GPT-Codex-5.3 / Claude Opus 4.5 等），
-召回量比 v6 提升 22%（365→448），其中 google-news +52%、twitter +35% 最显著。
-hackernews 因 Algolia points>30 硬过滤，新关键词覆盖的小众讨论本身不达阈值，
-召回未变（符合预期）。
+注 2：v8 加 publishedAt 后，**旧数据不会自动回填**（无回填脚本，且 metric
+里有 published 字段的也只是个空字符串，提取出来仍是 null）。所以 publishedAt
+写入率会随新一轮 ingest 自然增长，按平均节奏几天后能覆盖到 ~50%（无发布时间
+语义的 weibo/zhihu/github 永远是 0%）。若想做一次性回填可写脚本扫描所有
+HotSpotSource.metric 解析后更新 publishedAt（约 461 条，1 分钟内完成）。
 
-注 3：AI 覆盖率比 v6 微降（19.5% → 18.2%）是因为新增 83 条还没批量 AI 处理。
-点首页"扫描+AI"主按钮跑 limit=20 几轮即可补齐。
+注 3：HotItemCard 现在 sources.metric 是对象不是字符串（v8 改契约，详见 D-039）。
+前端如果在别处复用卡片要传整个对象，不是 formatMetric 过的字符串。
+
+注 4：v9 未做 publishedAt / excerpt 历史回填；也未批量重跑 AI（见 D-045）。
 ```
 
 ---
@@ -488,6 +550,13 @@ npx tsx scripts/debug-ai-smoke.ts     # AI 链 smoke（验证 OpenRouter + 3 链
 ### 最近 commit 历史（HEAD 倒序）
 
 ```
+e6be06b feat(detail+e2e): 详情页 AI 长导读 + 原文摘录区块 + e2e 8 项至 87     ← v9 T3
+0dc9288 feat(ai): 长导读 200-500 字 + source-excerpt + pipeline 喂摘录      ← v9 T2
+8c68ca6 feat(scrapers): google-news/infoq 透传 RSS contentSnippet→excerpt  ← v9 T1
+534cb86 feat(detail+e2e): 详情页同步 publishedAt + e2e 扩充 9 项至 79/79  ← v8 T3
+1a3053b feat(ui): HotItemCard 双 badge 摘要 + 作者媒体 + 飙升趋势 + 发布时间  ← v8 T2
+782304d feat(schema): 新增 publishedAt 字段 + 3 个 scraper 补提取发布时间  ← v8 T1
+f160716 docs(handover): v7 章节 + ADR D-031~034 + 4 条新踩坑              ← v7 补丁
 b79afb0 feat(scrapers): 接入关键词中心·google-news/twitter/hackernews 召回量 +22%  ← v7 T2
 bf4bd8f feat(keywords): 关键词中心 + 变体扩展（解决 Codex 5.3 / GPT-Codex-5.3 一类死板问题）  ← v7 T1
 faab752 docs(handover): 补齐 v6 章节（上次 v6 三个 commit 遗漏）          ← v7 补丁
@@ -539,6 +608,21 @@ b0f77d5 chore: 初始化 HotPulse 项目骨架（Phase 1+2 完成）            
 ---
 
 ## 12. 待办（下一步候选方向）
+
+### **★ v9 留下的尾巴 / AI 长导读后续可做的事**
+
+1. **InfoQ / 知乎正文抓取**（用户痛点最大）：RSS excerpt 无效，长标题只能部分救场。可选 cheerio 抓 InfoQ 文章首段 / Firecrawl 兜底（DESIGN.md 已有 FIRECRAWL_API_KEY 字段未启用）
+2. **reddit selftext 写入 metric**（v9 Q2-C 未选）：self-post 常有数百字正文，改 `reddit.ts` 一行即可，pipeline 已能读 excerpt
+3. **twitter 完整 text 存 metric**（当前 title 截 120 字）：补 `metric.fullText` 可让 AI 多读一倍语境（注意 429 限速）
+4. **旧版短摘要批量重跑**（v9 Q4-A 未选）：`process?scope=all` 或脚本筛 `summary.length < 150` 的 ~77 条；成本约 5-10 分钟 LLM
+5. **首页卡片可选「展开长导读」**（v9 Q1-D 未做）：详情页已有长文，卡片仍 clamp-2；若用户要在列表也读全文再加 accordion
+
+### **★ v8 留下的尾巴 / publishedAt 后续可做的事**
+
+1. **publishedAt 一次性回填脚本**：v8 加字段时未回填，旧数据 publishedAt 仍是 null（影响 ~85% HotSpot）。可写脚本扫描 HotSpotSource.metric → 重新调 `extractPublishedAt` → 更新两层 publishedAt。约 461 条数据，1 分钟内完成
+2. **按发布时间排序（v8 Q2-A 未选）**：新增 sort 选项 `newest_published`，使用 `publishedAt desc nulls last`。前端 SORT_OPTIONS 加一个 pill；后端 route.ts orderBy 加分支
+3. **时间窗筛选切换语义（v8 Q2-B 未选）**：1h/6h/24h/7d 改成"优先 publishedAt，没有则 firstSeenAt"。代价是 SQL 表达式复杂化（SQLite `COALESCE(publishedAt, firstSeenAt) >= since`），可能影响索引使用
+4. **"只显示有发布时间的" toggle（v8 Q2-C 未选）**：filter 里加一个开关 `?hasPublished=1`，对 weibo/zhihu/github 永远是 0% 写入的源不友好，可能用得少
 
 ### **★ 信息源可靠性硬底层（v6 商讨过但未做，强烈推荐先做）**
 
@@ -740,7 +824,7 @@ b0f77d5 chore: 初始化 HotPulse 项目骨架（Phase 1+2 完成）            
 
 - `src/lib/ai/prompts/classify.ts` —— 输入 title + 可选 platforms → category + tags
 - `src/lib/ai/prompts/score.ts` —— 输入 title + metrics + age + engagementHint → 0-100 score + trendVelocity
-- `src/lib/ai/prompts/summarize.ts` —— 输入 title + 多源 rawTitles → summary + keyPoints + entities
+- `src/lib/ai/prompts/summarize.ts` —— v3：title + rawTitles；**v9**：再加 `sourceExcerpts`（github.description / googlenews excerpt 等）→ **200-500 字**长导读 + keyPoints + entities
 - 共同特征：所有 prompt 都强调"不捏造、不夸张、客观简洁"
 - 新增本地 smoke test `scripts/debug-ai-smoke.ts`（已 .gitignore，不进 git）
 
@@ -1182,11 +1266,201 @@ v5 清理脚本（D-026）暴露过"英文工程术语覆盖不足"问题——H
 
 ---
 
+## 22. v8 对话做的主要事 · 卡片信息密度大改（commits `782304d..534cb86`）
+
+> 用户原话（含图片）："目前已经展示了重要性、来源、关键词、帖子的标题、帖子的描述（需要确认是原始描述还是 AI 生成的）、相关性、热度（点赞数）等等，但是可能还需要人工跳转到原始网站去获取一些数据（比如帖子的发布时间），浪费了一些时间。**所以目标是能够节省人工判断信息价值的时间，更快地定位需要的热点信息。**"
+>
+> 通过完整代码盘点 + 数据可用性分析，定位 2 个核心痛点 + 5 个 ROI 高的信息密度提升点，AskQuestion 6 选择题拍板范围后分 3 个 commit 实施。
+
+### 任务 1（T1）：schema + 3 个 scraper 数据层（commit `782304d`）
+
+#### 改动
+
+- `prisma/schema.prisma`：
+  - `HotSpot.publishedAt DateTime?` + `@@index([publishedAt])`
+  - `HotSpotSource.publishedAt DateTime?`
+  - `prisma db push` 同步（旧数据自动 null，无迁移风险，99ms 完成）
+- `src/lib/published-at.ts`（新增）：
+  - `extractPublishedAt(platform, metric)` 9 平台映射：
+    - googlenews/infoq → `metric.published` ISO 字符串
+    - hackernews → `metric.time` Unix 秒
+    - reddit/bilibili → `metric.publishedAt` Unix 秒（v8 新增字段）
+    - twitter → `metric.publishedAt` ISO 字符串（v8 新增字段）
+    - weibo/zhihu/github → null（平台无发布时间语义）
+  - 含 **脏数据范围校验**：负 Unix / 0 / 空串 / 1980 前 / 未来 24h 后 全部返回 null
+  - `pickEarliestPublishedAt(sources)` 多 source 合并时取最早
+- `src/lib/ingest.ts`：
+  - 入库时计算 `extractPublishedAt`，写入 source 级 publishedAt
+  - HotSpot.publishedAt = 所有 source publishedAt 的最早（更接近原始发表时刻）
+- 3 个 scraper 补提取上游字段：
+  - `reddit.ts`：metric 加 `publishedAt: d.created_utc`
+  - `twitter.ts`：metric 加 `publishedAt: t.createdAt`
+  - `bilibili.ts`：metric 加 `publishedAt: it.pubdate`
+
+#### 验证
+
+- type-check ok · e2e 68/70 PASS（2 个失败是 twitter 429 限速，与本次无关）
+- 实测 ingest 后：reddit 44% / googlenews 25% / infoq 67% / hackernews 5% 有 publishedAt 写入
+- weibo/zhihu/github 0% 符合预期
+
+### 任务 2（T2）：API 透传 + HotItemCard 大改（commit `1a3053b`）
+
+#### 后端（API 层）
+
+- `src/app/api/hotspots/route.ts`：
+  - `serializeItem` 加 `publishedAt / processedAt / trendVelocity`
+  - sources 透传 `publishedAt`
+- `src/app/api/hotspots/[id]/route.ts`：
+  - 加 `publishedAt`（HotSpot 级 + 每个 source）
+
+#### 前端（src/components/HotItemCard.tsx）—— 完整重构
+
+新增 props：
+- `isAiSummary?: boolean` —— 是否为 AI 摘要（用于 badge 判定）
+- `publishedAt?: string | null` —— HotSpot 级最早发布时间
+- `trendVelocity?: number | null` —— 飙升徽章判定
+
+布局改动：
+1. **顶部徽章行**新增"飙升 X/h"（trendVelocity ≥ 8 时显示，黄色 RocketMiniIcon）
+2. **摘要区域改双 badge 上下两行**：
+   - 「AI 摘要」紫色徽章 + 紫色 SparkMiniIcon，processedAt != null && summary 非空时显示
+   - 「原文摘录」灰色徽章 + 灰色 QuoteMiniIcon，从 `source.metric.excerpt/desc` 或退化到 `rawTitle`
+   - 自动避免重复：原文 == AI 摘要 或 == 主标题 时不显示
+3. **底部拆两行**（卡片高 +14px）：
+   - row1 紧凑互动指标：主指标（♥/▲/★）+ 评论数 + 浏览数 + 作者/媒体 + AI 分 + tags
+   - row2 时间 + 原文：📅 发布 X 前 · 🔄 抓取 X 前 · 原文 ↗
+
+内部新增 9 个 helper（不下沉 lib）：
+- `pickPrimaryMetric(platform, metric)` —— 9 平台各自的主指标（weibo→热度 / bilibili→播放 / github→stars / twitter→赞 / hn/reddit→升）
+- `pickSecondaryMetrics(platform, metric)` —— 评论数 + 浏览数（最多 2 条）
+- `pickAuthorLabel(platform, metric)` —— twitter @ / reddit u/ / hn by / bilibili UP / infoq 直名 / googlenews 媒体名（如 "The Verge"）
+- `timeAgo / compactNumber / num / str` 等小工具
+- 9 个 mini SVG 图标（CalendarMiniIcon / HeartMiniIcon / EyeMiniIcon / ChatMiniIcon / TriangleUpIcon / UserMiniIcon / RefreshTinyIcon / RocketMiniIcon / SparkMiniIcon / QuoteMiniIcon）
+
+#### page.tsx 同步
+
+- Hotspot/HotspotSource 类型加 `publishedAt / processedAt / trendVelocity / source.publishedAt`
+- sources.metric 从字符串改为对象传递（详见 **D-039**）
+- 卡片调用加 `isAiSummary={item.processedAt != null}` 等新 prop
+- 移除已无人使用的 `formatMetric` 函数（功能下沉到卡片内 `pickPrimaryMetric`）
+
+#### 验证
+
+- type-check ok · lint ok · 首页 SSR 200 · dev server 日志无错
+- API 实测返回 publishedAt/processedAt/trendVelocity 字段全有
+
+### 任务 3（T3）：详情页同步 + e2e 扩充（commit `534cb86`）
+
+#### 详情页（src/app/hotspot/[id]/page.tsx）
+
+不需要 AI/原文双 badge（详情页已经有明确的"AI 摘要"区块标题，无歧义），只补 publishedAt 展示：
+- Hero 区标题下加二排小字：
+  - 「原始发布：2026-05-26 16:41（2 小时前）」（无时显示 —）
+  - 「最近抓取：2026-05-26 18:30」
+- SourceRow 每条 source 显示：`发布 Xh 前 · 抓取 Xh 前`（hover title 看精确时间）
+- 底部元数据从 3 列扩到 4 列，加"原始发布"项
+- 新增 `timeAgoZh` 工具 + 3 个图标（CalendarIcon / CalendarTinyIcon / RefreshSmallIcon）
+
+#### e2e-test.ts
+
+新增 `testPublishedAt` 组（8 项）：
+- 9 平台 extractPublishedAt 映射全通过
+- 5 种脏数据全部返回 null
+- pickEarliestPublishedAt 取最早
+- /api/hotspots 列表 4 个字段透传（publishedAt/processedAt/trendVelocity/source.publishedAt）
+- DB 含 publishedAt sanity check
+
+testHotSpotDetailApi 加 1 项：source.publishedAt 透传断言
+
+总用例：v7 70 → v8 79（+9），全部 PASS。
+
+### v8 用户决策记录
+
+| 议题 | 用户选择 |
+|---|---|
+| Q1 本次范围（多选） | publishedAt + 作者/媒体 + AI 摘要标识 + 紧凑互动指标 + 飙升趋势徽章（5 项；去掉了 keyPoint 首条 / 平台原始排名 2 项）|
+| Q2 排序/筛选扩展 | D · 全都不动，先只改卡片展示（按发布时间排序 / 时间窗 fallback 语义 / 仅显示有发布时间的 toggle 全部留到下次）|
+| Q3 摘要展示策略 | C · 同时展示 AI 摘要 + 原文摘录上下两行各带 badge（不只是单纯打 badge，也不只显示其一）|
+| Q4 scraper 补提取范围 | A · 三个都补：reddit + twitter + bilibili |
+| Q5 卡片布局密度 | B · 底部拆两行（卡片高 +14px），不用 hover-reveal 也不用更激进的紧凑布局 |
+| Q6 commit 拆分粒度 | A · 3 个 commit：数据层 / 卡片重构 / 详情页+e2e |
+
+### v8 踩坑（详见 §7 第 34-40 条）
+
+1. PowerShell `Out-String` 让 background shell 不返回（dev server 启动卡住）
+2. 僵尸 dev server 占着 3000 端口 → 新启的 next 让到 3001，e2e 失败
+3. SQLite 加新可空列不需要 migration（`db push` 99ms 完事）
+4. `StrReplace` 多片段连改要严格"一处一改"
+5. 卡片 sources.metric 契约从 string → object，page.tsx 必须同步
+6. e2e 跑前必须开 dev server（之前 HANDOVER 没明确写）
+7. 跨文件字段契约要尽早定名（reddit/twitter/bilibili 统一用 `metric.publishedAt`）
+
+---
+
+## 23. v9 对话做的主要事 · AI 长导读（commits `8c68ca6..e6be06b`）
+
+> 用户原话：「**AI 摘要太短了，无法比较详细地了解 ai 热点**」（截图：InfoQ Oracle XStream 条目仅 ~88 字空话摘要）。
+>
+> 完整代码盘点 + DB 采样 5 条已 AI 处理热点 → 根因是 **AI 只看标题** + **schema 限 220 字**，不是模型能力差。AskQuestion 6 项拍板后分 3 commit 实施；开发中实测发现 **InfoQ RSS excerpt 无效**，pipeline 额外串通 **github.description**。
+
+### 任务 1（T1）：scraper 透传 RSS excerpt（commit `8c68ca6`）
+
+- `google-news.ts` / `infoq.ts`：`metric.excerpt = cleanContentSnippet(contentSnippet)`（去 HTML、截 400 字）
+- 实测 ingest：googlenews **100%** 有 excerpt，均 **~77 字**；infoq **100%** 有字段但内容 **100% 为「点击查看原文>」**
+
+### 任务 2（T2）：AI Pipeline 长导读（commit `0dc9288`）
+
+- **新增** `src/lib/source-excerpt.ts`：`isUsefulExcerpt` / `extractSourceExcerpt` / `collectSourceExcerpts`
+- `schemas.ts`：`summary` **80-800 字**（原 20-220）；`keyPoints` min **3** 条、单条 max **80**
+- `summarize.ts`：system prompt 要求 **200-500 字** 四段结构（背景 / 核心 / 影响 / 适合谁看）；入参加 `sourceExcerpts[]`
+- `pipeline.ts`：`collectSourceExcerpts(sources)` → 传入 summarize（自动含 **github.description**、googlenews excerpt；过滤 infoq 占位符）
+- `HotItemCard.tsx`：`pickRawExcerpt` 改用 `extractSourceExcerpt`（首页「原文摘录」行同步过滤无效内容）
+
+### 任务 3（T3）：详情页 + e2e（commit `e6be06b`）
+
+- `hotspot/[id]/page.tsx`：
+  - 「AI 摘要」→ **「AI 长导读」**（`leading-[1.75]` 全文展示）
+  - 旧摘要 `length < 150` 且已 AI 处理 → 提示重新「扫描+AI」
+  - 新增 **「原文摘录」** 区块（多源卡片，平台 shortLabel 色块）
+- `e2e-test.ts`：`testSourceExcerpt` **8 项**（过滤 / 提取 / 去重 / schema 长度 / DB googlenews excerpt）
+- 总用例：v8 **79 → 87**（+8）；全量跑通常 **85 PASS**（twitter 429 ×2 无关）
+
+### v9 用户决策记录
+
+| 议题 | 用户选择 |
+|---|---|
+| Q1 详细度 | **D** · 首页保持 line-clamp-2 + 详情页 300-500 字长导读 |
+| Q2 scraper 范围 | **B** · 只补 google-news + infoq（实测 infoq 无效；C2 额外串通 github.description）|
+| Q3 独立 deepAnalysis 字段 | **B** · 不加，只扩 summary |
+| Q4 旧数据重跑 | **A** · 不重跑，新数据自然替换 |
+| Q5 详情页布局 | **B** · AI 长导读 + 下方「原文摘录」对照 |
+| Q6 commit 拆分 | **A** · 3 commit |
+
+### v9 素材质量速查（给下一个 AI）
+
+| 平台 | 字段 | 是否有效 | 典型长度 |
+|---|---|---|---|
+| google-news | `metric.excerpt` | ✅ 中等（标题+媒体复读） | ~77 |
+| github | `metric.description` | ✅ **高** | ~109 |
+| infoq | `metric.excerpt` | ❌ 占位符 | 7 |
+| zhihu | `metric.excerpt` | ⚠️ 最近样本常空 | 0-200 |
+| reddit | `selftext` | 未接入 | — |
+
+### v9 踩坑（详见 §7 第 41-45 条）
+
+1. InfoQ contentSnippet = 「点击查看原文>」不是摘要
+2. google-news snippet 仍偏标题复读
+3. github.description 才是 v9 最高性价比（不必改 scraper）
+4. SummarySchema min(80) 要同步改 e2e 样本
+5. 旧短摘要必须 UI 提示重跑 AI
+
+---
+
 ## 20. 入口参考
 
 - 详细需求 → `docs/REQUIREMENTS.md`
 - 详细技术方案 + ADR → `docs/DESIGN.md`
-- 用户验收过的测试套件 → `scripts/e2e-test.ts`（**70/70 PASS**）
+- 用户验收过的测试套件 → `scripts/e2e-test.ts`（**87 项**，通常 **85 PASS**；twitter 429 可忽略）
 - 本地诊断 → `scripts/debug-stats.ts` / `scripts/debug-scan.ts` / `scripts/debug-ai-smoke.ts`（不在 git）
 - 一次性清理 → `scripts/cleanup-non-tech.ts`（v5 新增，进 git，可重跑）
 - Git 规则 → `.cursor/rules/git-auto-push.mdc`
@@ -1194,6 +1468,9 @@ v5 清理脚本（D-026）暴露过"英文工程术语覆盖不足"问题——H
 - AI 进度查询端点 → `src/app/api/process/status/route.ts`（v6 新增）
 - 科技相关性过滤 → `src/lib/tech-filter.ts`（v6 扩到 ~295）
 - **关键词中心 → `src/lib/scrapers/keywords.ts`（v7 新增，32 entity / 13 family）**
-- 数据源加固历史 → §15（v2）+ §16（v3）+ §17（v4）+ §18（v5）+ §19（v6）+ §21（v7）
+- **发布时间解析 → `src/lib/published-at.ts`（v8 新增，9 平台 metric→Date 统一）**
+- **原文摘录 / AI 喂料 → `src/lib/source-excerpt.ts`（v9 新增，过滤 + 多源收集）**
+- **长导读 prompt → `src/lib/ai/prompts/summarize.ts`（v9 · 200-500 字四段结构）**
+- 数据源加固历史 → §15（v2）+ §16（v3）+ §17（v4）+ §18（v5）+ §19（v6）+ §21（v7）+ §22（v8）+ §23（v9）
 
-**祝下一个 AI 玩得愉快 · HEAD = `b79afb0`**
+**祝下一个 AI 玩得愉快 · HEAD = `e6be06b`**
