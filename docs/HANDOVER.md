@@ -1,7 +1,7 @@
 # HotPulse · AI 项目交接文档
 
 > **此文档面向"下一个 AI"** —— 新开对话时让 AI 快速恢复完整项目上下文，避免重新理解或踩历史决策的坑。
-> 最后更新：2026-05-27（**v9**，详情页 AI 长导读 200-500 字 · RSS excerpt 喂料 + source-excerpt 过滤 · 原文摘录区块）
+> 最后更新：2026-05-27（**v10.1**，修复「生成长导读」`response did not match schema` · generateObject 重试 + 输出归一化 + 步骤级错误；含 v10 单条 AI + P1 相关性 eval）
 
 ---
 
@@ -15,11 +15,12 @@
 | **包名** | `ai-hotspot-monitoring`（`package.json`） |
 | **运行平台** | Windows（PowerShell），本地开发 |
 | **GitHub 仓库** | <https://github.com/dada628/ai-Hotspot-monitoring>（main 分支已托管） |
-| **当前阶段** | Phase 1+2+2.5+2.6+2.7+2.8+2.9 ✅ · **Phase 3 AI Pipeline ✅** · **Phase 2.X 详情页 + 相关推荐 + 多类目扩展 ✅** · **Phase 2.Y v5 信息流交互修复 + 科技源头过滤 ✅** · **Phase 2.Z v6 UX 优化第一波 ✅** · **Phase 2.AA v7 关键词中心 + 变体扩展 ✅** · **Phase 2.AB v8 卡片信息密度大改 ✅** · **Phase 2.AC v9 AI 长导读 ✅** · Phase 4 用户认证 UI 待开工 |
-| **测试** | `npx tsx scripts/e2e-test.ts` —— **87 项**（v8 79 + v9 新增 8 项 SourceExcerpt）；通常 **85 PASS**（2 项 twitter 429 与改动无关） |
+| **当前阶段** | Phase 1+2+2.5+2.6+2.7+2.8+2.9 ✅ · **Phase 3 AI Pipeline ✅** · **Phase 2.X~2.AC v4–v9 ✅** · **Phase 2.AD v10 单条 AI ✅** · **Phase 2.AE P1 相关性 eval ✅** · **Phase 2.AF v10.1 长导读 schema 加固 ✅** · Phase 4 用户认证 UI 待开工 |
+| **测试** | `npx tsx scripts/e2e-test.ts` —— **92 项**（v10 88 + v10.1 新增 4 项 AI normalize/step error）；通常 **90 PASS**（2 项 twitter 429 与改动无关） |
+| **相关性评估** | `npm run eval:relevance` —— golden **43 条** + LLM judge（需 `RUN_AI_TESTS=1`）；`--dry-run` 不调 API |
 | **dev URL** | <http://localhost:3000> |
 | **AI 默认模型** | `deepseek/deepseek-v3.2`（OpenRouter，含 response-healing 插件） |
-| **HEAD commit** | `e6be06b` feat(detail+e2e): 详情页 AI 长导读 + 原文摘录区块 + e2e 8 项 |
+| **HEAD commit** | `d183e8e` fix(ai): 长导读 schema 失败重试 + 输出归一化 + 步骤级错误提示 |
 
 ---
 
@@ -91,7 +92,11 @@ ai-Hotspot monitoring/
 │   ├── DESIGN.md                     # ADR D-001 ~ D-012
 │   └── HANDOVER.md                   # ← 你正在读
 ├── scripts/
-│   ├── e2e-test.ts                   # ★ v9 升至 87 项（v8 79 + v9 新增 8 项 SourceExcerpt 用例）
+│   ├── e2e-test.ts                   # ★ v10.1 升至 92 项（+4 项 testAiNormalize：tags/keyPoints/reasoning/步骤错误）
+│   ├── relevance-eval/               # ★ v10 P1 · golden.jsonl + run.ts（用户 query 相关性评估）
+│   │   ├── golden.jsonl                # 43 条 direct/related/irrelevant 种子
+│   │   ├── run.ts
+│   │   └── README.md
 │   ├── backfill-engagement-score.ts  # 一次性回填工具（公式调整后可重跑）
 │   ├── cleanup-non-tech.ts           # ★ v5 新增 · 一次性清理非科技 HotSpot（dry-run/--apply）
 │   ├── debug-stats.ts                # ★ 本地诊断脚本（已在 .gitignore，不进 git）
@@ -104,8 +109,8 @@ ai-Hotspot monitoring/
 │   └── dev.db                        # SQLite，运行时生成
 ├── src/
 │   ├── app/
-│   │   ├── page.tsx                  # ★ v6 重写 · phase 状态机 + 一键扫描+AI 主按钮 + 下拉 3 选项 + polling 进度
-│   │   ├── hotspot/[id]/page.tsx     # ★ v9 修改 · 「AI 长导读」+「原文摘录」；v8 publishedAt；v4 详情骨架
+│   │   ├── page.tsx                  # ★ v10 · 单条 AI（卡片底/详情 Hero）+ v6 一键扫描+AI + polling
+│   │   ├── hotspot/[id]/page.tsx     # ★ v10 · Hero「生成长导读」；v9 长导读+原文摘录
 │   │   ├── admin/ingest/page.tsx     # 数据采集控制台
 │   │   ├── dashboard/page.tsx        # Phase 4 占位
 │   │   ├── login/page.tsx            # Phase 4 占位
@@ -114,7 +119,7 @@ ai-Hotspot monitoring/
 │   │   └── api/
 │   │       ├── auth/[...nextauth]/route.ts
 │   │       ├── ingest/route.ts                  # POST 触发抓取（Bearer ${CRON_SECRET}）
-│   │       ├── process/route.ts                 # ★ v3 新增 · POST 触发 AI Pipeline
+│   │       ├── process/route.ts                 # ★ v10.1 · 单条失败返回 step + 可读 detail（分类/长导读/评分）
 │   │       ├── process/status/route.ts          # ★ v6 新增 · GET 当前 AI 处理进度（供前端 polling）
 │   │       ├── hotspots/route.ts                # ★ v5 重写 · 5 种排序差异化 + time 窗口 + relevance 需 kw
 │   │       ├── hotspots/[id]/route.ts           # ★ v4 新增 · GET 单条详情（14 字段 + sources）
@@ -125,7 +130,7 @@ ai-Hotspot monitoring/
 │   │   ├── StatCard.tsx              # 内嵌 card-spotlight 鼠标跟手光晕
 │   │   ├── Tabs.tsx
 │   │   ├── PillSelect.tsx
-│   │   ├── HotItemCard.tsx           # ★ v8 大改 + v9 · 底部两行 + AI/原文双 badge（原文走 source-excerpt 过滤）；首页 AI 摘要仍 line-clamp-2
+│   │   ├── HotItemCard.tsx           # ★ v10 · 底部「AI 处理/生成长导读」；v8/v9 双 badge 摘要行
 │   │   ├── Badge.tsx
 │   │   └── aceternity/               # ★ Aceternity UI（自存，单文件复制式）
 │   │       ├── Spotlight.tsx         # ⚠️ 注意：无 fill prop，只接受 gradientFirst/Second/Third
@@ -139,6 +144,8 @@ ai-Hotspot monitoring/
 │       ├── ingest.ts                 # ★ v8 修改 · 写入 source.publishedAt；HotSpot.publishedAt 取所有 source 中最早
 │       ├── published-at.ts           # ★ v8 新增 · 9 平台 metric → Date 统一解析（含脏数据范围校验）
 │       ├── source-excerpt.ts         # ★ v9 新增 · 从 metric 提取有效摘录 + 过滤 InfoQ 占位符；供 AI / 卡片 / 详情页复用
+│       ├── single-ai-action.ts       # ★ v10 · 是否显示单条 AI 按钮（未处理 / summary<150）
+│       ├── relevance-rules.ts        # ★ v10 P1 · 子串 hits 规则基线（与 sort=relevance 一致）
 │       ├── score.ts                  # 本地兜底评分（9 平台公式 + 24h 衰减）
 │       ├── tech-filter.ts            # ★ v6 扩词到 ~295（+53 工程/AI 术语，删 research 防误命中）
 │       ├── scrapers/
@@ -158,13 +165,18 @@ ai-Hotspot monitoring/
 │       └── ai/                       # ★ v3 全新目录（AI Pipeline）
 │           ├── models.ts             # 7 个国产模型 + DEFAULT_MODEL_ID
 │           ├── openrouter.ts         # ★ v3 · OpenRouter 客户端封装（response-healing 插件）
-│           ├── schemas.ts            # ★ v9 修改 · SummarySchema.summary 80-800 字长导读；keyPoints 至少 3 条
-│           ├── pipeline.ts           # ★ v9 修改 · summarize 前 collectSourceExcerpts（含 github.description）
+│           ├── schemas.ts            # ★ v9 · SummarySchema.summary 80-800 字；keyPoints min 3（**未放宽**）
+│           ├── generate-with-retry.ts # ★ v10.1 · generateObject 失败最多 3 次 + repairHints 回灌
+│           ├── normalize-outputs.ts  # ★ v10.1 · 成功后截断 tags/reasoning、补齐 keyPoints 等
+│           ├── pipeline-step-error.ts # ★ v10.1 · classify/summarize/score 步骤错误 + 中文格式化
+│           ├── relevance-schemas.ts  # ★ v10 P1 · tier/directMention/score + golden 结构
+│           ├── relevance-judge.ts    # ★ v10 P1 · 用户 query 语义判官（未接线上 API）
+│           ├── pipeline.ts           # ★ v10.1 · runPipelineStep 包装三链；scope 支持 string[] ID
 │           ├── alert-match.ts        # ★ v3 · 订阅规则匹配 + Alert 创建/更新
 │           └── prompts/
-│               ├── classify.ts      # ★ v3 · category + tags
-│               ├── score.ts         # ★ v3 · 0-100 + trendVelocity
-│               └── summarize.ts     # ★ v9 大改 · 200-500 字长导读 prompt + sourceExcerpts 入参
+│               ├── classify.ts      # ★ v10.1 · generateWithRetry + normalizeClassifyOutput
+│               ├── score.ts         # ★ v10.1 · generateWithRetry + normalizeScoreOutput
+│               └── summarize.ts     # ★ v10.1 · generateWithRetry + normalizeSummaryOutput（长导读）
 ├── types/
 │   └── next-auth.d.ts
 ├── .gitignore                        # 含 debug-stats / debug-scan / debug-ai-smoke 排除
@@ -193,6 +205,9 @@ ai-Hotspot monitoring/
 | **2.AA · 关键词中心 + 变体扩展（解决 Codex 5.3 / GPT-Codex-5.3 一类死板）** | ✅ **v7 完成** | 新建 `src/lib/scrapers/keywords.ts`（32 entity / 13 family / 含 OpenAI Codex 系列 + Anthropic 4.5 + Gemini 3 + DeepSeek V3.2 + Qwen3 + Grok 4 + Kimi K2 + GLM-4.6 + 工程工具栈）+ autoVariants（空格 ↔ 连字符）+ buildKeywordQueries（primary+secondary 智能分桶）+ 接入 google-news（5→7 路）/ twitter（2→3 路）/ hackernews（合并长 OR）；召回量 +22%（365→448） |
 | **2.AB · 卡片信息密度大改（解决"必须跳原文确认时效"）** | ✅ **v8 完成** | schema 加 publishedAt（HotSpot + HotSpotSource）+ 新增 `src/lib/published-at.ts` 9 平台 metric→Date 统一解析 + 补 reddit/twitter/bilibili 3 个 scraper 提取上游字段 + HotItemCard 底部拆两行 + AI 摘要/原文摘录双 badge + 作者/媒体徽章 + 飙升趋势徽章（trendVelocity ≥ 8/h）+ 紧凑互动指标（评论/浏览） + 详情页 Hero/SourceRow/元数据栏同步显示发布时间；e2e 70→79 PASS |
 | **2.AC · AI 长导读（解决"详情页摘要太短看不懂"）** | ✅ **v9 完成** | 根因：AI 只看标题 + schema 限 220 字 → 空话摘要。google-news/infoq scraper 透传 `metric.excerpt`；新增 `source-excerpt.ts` 过滤无效摘录；pipeline 喂 github.description 等；`SummarySchema` 扩到 80-800 字 + summarize prompt 结构化（背景/核心/影响/读者）；详情页「AI 长导读」+「原文摘录」区块；旧摘要 <150 字提示重跑 AI；e2e 79→87 |
+| **2.AD · 单条 AI 处理（解决一键批量 3–5 分钟太长）** | ✅ **v10 完成** | `POST /api/process?ids=` 单条；首页卡片 + 详情 Hero 按钮；`getSingleAiAction`：未处理→「AI 处理」、已处理且 summary<150→「生成长导读」；与批量 `phase` 互斥；commits `28966e7` `23b310f` |
+| **2.AE · P1 用户 query 相关性评估（离线）** | ✅ **v10 完成** | `scripts/relevance-eval/` + `judgeRelevance`；golden 43 条；`npm run eval:relevance`；**未改** ingest/Pipeline/列表 API；commit `62d106c` |
+| **2.AF · 「生成长导读」schema 失败修复** | ✅ **v10.1 完成** | 用户报错 `No object generated: response did not match schema`（英文长标题 + 无摘录常见）。`generate-with-retry` 最多 3 次；`normalize-outputs` 截断超长 tags/reasoning、补齐 keyPoints≥3；`pipeline-step-error` + API `step`/`detail`；e2e 88→92；commit `d183e8e` |
 | 4 · 用户认证 UI + Dashboard | ⏳ **下一步** | 现在 `/login` `/dashboard` 还是占位 |
 | 5 · 定时任务 + 预警 + 设置 | ⏳ | 模型动态切换在这里做 |
 | 6 · 集成测试 + 验收 | ⏳ | 网页版正式 release |
@@ -240,10 +255,11 @@ ai-Hotspot monitoring/
                           │
               ┌───────────┴──────────────────────────────────┐
               │ Phase 3：AI Pipeline（手动触发：UI 按钮/API）│  ← v3 上线
-              │   POST /api/process?limit=N&scope=unprocessed │
+              │   批量：POST /api/process?limit=20&scope=unprocessed │
+              │   单条：POST /api/process?ids=<cuid>  （v10）      │
               │           Bearer ${CRON_SECRET}                │
               │                       │                        │
-              │   processBatch()      │                        │
+              │   processBatch()      │  scope 可为 ID 数组     │
               │     ├─→ classify  →  category + tags           │
               │     ├─→ summarize →  summary(长导读) + keyPoints + entities │ ← v9 喂 sourceExcerpts
               │     └─→ score     →  0-100 score + trendVelocity    │
@@ -264,7 +280,7 @@ ai-Hotspot monitoring/
                           ▼
               前端 effectiveScore = score > 0 ? score : engagementScore
                           ▼
-              HotItemCard（标题点击跳详情页 + 底部"原文 ↗"小链接）
+              HotItemCard（底部单条「AI 处理/生成长导读」v10 + 原文 ↗）
                           ▼
               GET /api/hotspots/[id]         ← v4 单条 14 字段
               GET /api/hotspots/[id]/related ← v4 相关推荐
@@ -325,6 +341,12 @@ ai-Hotspot monitoring/
 | **D-043** | **v9 · 原文素材集中在 lib/source-excerpt.ts** | `isUsefulExcerpt`：< 20 字或含「点击查看原文」→ 无效。`extractSourceExcerpt` 读 excerpt/description/desc。`collectSourceExcerpts` 多源去重。pipeline / HotItemCard / 详情页共用，避免 InfoQ 占位符进 AI 或 UI |
 | **D-044** | **v9 · scraper 只补 RSS 两源，pipeline 额外读已有 github.description** | 用户 Q2 选只改 google-news+infoq。实测：googlenews excerpt ~77 字有效；**infoq excerpt 100% 为「点击查看原文>」无效**；github description ~109 字早已在 metric 但未喂 AI → v9 C2 在 pipeline 层串通，无需再改 github scraper。reddit selftext / twitter 全文本次未做 |
 | **D-045** | **v9 · 不重跑旧 77 条 AI 摘要** | 用户 Q4-A：批量重跑成本高。新 ingest + 新点「扫描+AI」的条目自动得长导读；旧条目不自动升级 |
+| **D-046** | **v10 · 单条 AI 走 `?ids=` 复用 processBatch** | pipeline 早已支持 `scope: string[]`；API 层暴露 `ids`（仅 1 个）。一键批量逻辑不变（limit=20）。单条与批量互斥：`isBusy` 含 `processingItemId` |
+| **D-047** | **v10 · 单条按钮可见性 = getSingleAiAction** | 未处理（无 processedAt）→「AI 处理」；已处理且 `summary.length < 150`（v9 前旧摘要）→「生成长导读」。**已有完整长导读的不显示按钮**（避免误点重跑烧 token） |
+| **D-048** | **v10 · P1 相关性 eval 离线、不接线上** | 用户 query 语义相关 ≠ tech-filter 科技宽口径。golden 43 条 + `judgeRelevance` + 规则基线对比；改 prompt/阈值前先跑 eval。P2 再考虑写入 Pipeline / 过滤列表 |
+| **D-049** | **v10 · 首页 `reference="direct"` 仍硬编码** | `page.tsx` 所有卡显示「直接提及」，后端未算 mentionType——**已知 UI 债**；P2 接 relevanceJudge 后再改 |
+| **D-050** | **v10.1 · schema 严格 + 重试 + 归一化（不放宽 Zod）** | 用户选方案 A：保持 `SummarySchema` min 80 / keyPoints min 3 等不变；`generateWithRetry` 最多 3 次并把 Zod 摘要写回 prompt；成功后 `normalize-*` 安全截断/补齐（tags≤12、confidence 0–1、keyPoints 补第 3 条）。**未选**放宽 schema、**未做**「生成长导读」仅重跑 summarize（方案 C 见 §12 待办） |
+| **D-051** | **v10.1 · 单条失败必须标明步骤** | API 500 返回 `step: classify\|summarize\|score` + `detail`（如 `失败步骤：长导读 — …`）；前端读 `body.detail` 展示。便于区分 classify 英文 tag 超长 vs summarize 字数/keyPoints 不足 |
 
 ---
 
@@ -415,6 +437,20 @@ ai-Hotspot monitoring/
 44. **扩 summary schema 后旧 e2e 用例会挂**：`SummarySchema.summary.min(80)` 后，原先 20 字测试对象必须换成 80+ 字样本；同时加「拒绝过短」反向用例。
 45. **用户选「不重跑旧 AI」→ 详情页必须 UX 提示**：否则用户以为 bug。`summary.length < 150 && processedAt` 时显示「v9 之前旧版短摘要，请重新扫描+AI」。
 
+### v10 新踩坑（单条 AI + 相关性 eval）
+
+46. **单条 AI 按钮「看不见」其实是显示条件过窄**：第一版只在 `processedAt == null` 显示；用户截图条目已有「AI 摘要」→ 被隐藏。**解决**：`getSingleAiAction` 对 `summary < 150` 已处理条显示「生成长导读」；详情按钮放 Hero 区。
+47. **`aiIsOk` 只判断 `AI 处理失败` 前缀**：单条失败文案「单条 AI 失败」会显示成成功色。**解决**：改为 `!aiReport.includes('失败')`。
+48. **单条刷新 `loadAll()` 触发全表 loading**：整页 shimmer。**解决**：`loadAll({ silent: true })`。
+49. **`.git/COMMIT_MSG_TMP` 内容被上次 commit 残留**：`git commit -F` 偶发用上一条 message。**解决**：写入前覆盖文件；错 message 用 `git commit --amend -F`（仅未 push）。
+50. **相关性四层根因要分开治**：搜索宽（keywords OR）/ Prompt 无 directMention / 排序无阈值 / 无 eval——P1 只解决第 4 层离线评估，**不要**指望跑一次 eval 就自动修列表。
+
+### v10.1 新踩坑（生成长导读 schema 失败）
+
+51. **「生成长导读」报 `response did not match schema` 不一定是 summarize**：单条 `?ids=` 仍跑 classify→summarize→score 全链。英文标题常见 **classify tags 超 12 字**（如 `Microsoft Claude`）、**confidence 写成 95**；summarize 常见 **summary<80 字**、**keyPoints 仅 2 条**。**解决**：v10.1 `generateWithRetry` + `normalize-outputs` + API/前端步骤提示；**未**放宽 Zod。
+52. **response-healing 不能替代 Zod**：OpenRouter 插件只修 JSON 形态，**不保证**字段长度/条数。长导读 min(80) 后偶发失败是预期行为，要靠重试而非回退 schema 到 v8 的 220 字。
+53. **归一化不能救 summary<80**：`normalizeSummaryOutput` 只补齐 keyPoints、截断超长字段；若模型三次都输出 <80 字 summary，仍会失败——需改 prompt 或考虑方案 C（仅重跑 summarize + 更短 min）。
+
 ---
 
 ## 8. 数据库现状（2026-05-27 02:30 快照 · v9 完成后）
@@ -470,6 +506,16 @@ IngestLog        持续累积（每次 ingest 一条 per 平台）
   - 进度：前端每 2s 轮询 /api/process/status，按钮显示"处理 12/20"
   - 想拆开执行：点 chevron 下拉，选"仅扫描" / "仅 AI 处理" / "一键全套"
 
+注 5（v10 · 单条 AI）：
+  - 单条：POST /api/process?ids=<hotSpotId>，约 15–40s，不占用顶部「处理 x/20」进度条
+  - 入口：首页卡片底（未处理 / 旧短摘要）· 详情 Hero「AI 处理」或「生成长导读」
+  - 单条进行中：顶部批量按钮禁用（isBusy 含 processingItemId）
+
+注 6（v10.1 · schema 稳定性）：
+  - 单条仍跑 classify → summarize → score 全链（非仅 summarize）
+  - 失败响应：`{ error, detail, step }`；detail 示例：`失败步骤：长导读 — No object generated: …`
+  - 实现：`generate-with-retry.ts` / `normalize-outputs.ts` / `pipeline-step-error.ts`（见 §25）
+
 注 2：v8 加 publishedAt 后，**旧数据不会自动回填**（无回填脚本，且 metric
 里有 published 字段的也只是个空字符串，提取出来仍是 null）。所以 publishedAt
 写入率会随新一轮 ingest 自然增长，按平均节奏几天后能覆盖到 ~50%（无发布时间
@@ -521,6 +567,13 @@ Invoke-WebRequest -Uri 'http://localhost:3000/api/ingest' -Method POST -Headers 
 # 5) 触发 AI 处理（默认 limit=5，scope=unprocessed）
 Invoke-WebRequest -Uri 'http://localhost:3000/api/process?limit=5' -Method POST -Headers $hdr -UseBasicParsing
 
+# 5b) 单条 AI（v10）
+# $id = '...'; Invoke-WebRequest -Uri "http://localhost:3000/api/process?ids=$id" -Method POST -Headers $hdr -UseBasicParsing
+
+# 5c) 相关性评估 P1（不调 dev server）
+# npm run eval:relevance -- --dry-run
+# $env:RUN_AI_TESTS=1; npm run eval:relevance
+
 # 6) 单条详情 API（先拿一个 id）
 $id = (Invoke-WebRequest -Uri 'http://localhost:3000/api/hotspots?limit=1' -UseBasicParsing).Content | ConvertFrom-Json | % { $_.items[0].id }
 Invoke-WebRequest -Uri "http://localhost:3000/api/hotspots/$id" -UseBasicParsing
@@ -550,6 +603,11 @@ npx tsx scripts/debug-ai-smoke.ts     # AI 链 smoke（验证 OpenRouter + 3 链
 ### 最近 commit 历史（HEAD 倒序）
 
 ```
+d183e8e fix(ai): 长导读 schema 失败重试 + 输出归一化 + 步骤级错误提示      ← v10.1
+62d106c feat(eval): P1 用户 query 相关性评估套件（golden + LLM judge）     ← v10 P1
+23b310f fix(ai): v9 旧短摘要显示「生成长导读」单条按钮                      ← v10
+28966e7 feat(ai): 单条 HotSpot AI 处理与批量互斥修复                        ← v10
+0691b8d docs(handover): v8+v9 章节 · ADR D-035~045 · e2e 87 项              ← 文档
 e6be06b feat(detail+e2e): 详情页 AI 长导读 + 原文摘录区块 + e2e 8 项至 87     ← v9 T3
 0dc9288 feat(ai): 长导读 200-500 字 + source-excerpt + pipeline 喂摘录      ← v9 T2
 8c68ca6 feat(scrapers): google-news/infoq 透传 RSS contentSnippet→excerpt  ← v9 T1
@@ -614,8 +672,16 @@ b0f77d5 chore: 初始化 HotPulse 项目骨架（Phase 1+2 完成）            
 1. **InfoQ / 知乎正文抓取**（用户痛点最大）：RSS excerpt 无效，长标题只能部分救场。可选 cheerio 抓 InfoQ 文章首段 / Firecrawl 兜底（DESIGN.md 已有 FIRECRAWL_API_KEY 字段未启用）
 2. **reddit selftext 写入 metric**（v9 Q2-C 未选）：self-post 常有数百字正文，改 `reddit.ts` 一行即可，pipeline 已能读 excerpt
 3. **twitter 完整 text 存 metric**（当前 title 截 120 字）：补 `metric.fullText` 可让 AI 多读一倍语境（注意 429 限速）
-4. **旧版短摘要批量重跑**（v9 Q4-A 未选）：`process?scope=all` 或脚本筛 `summary.length < 150` 的 ~77 条；成本约 5-10 分钟 LLM
+4. **旧版短摘要批量重跑**（v9 Q4-A 未选）：可用单条「生成长导读」逐条点，或 `process?scope=all` 批量；~77 条
 5. **首页卡片可选「展开长导读」**（v9 Q1-D 未做）：详情页已有长文，卡片仍 clamp-2；若用户要在列表也读全文再加 accordion
+6. **「生成长导读」仅重跑 summarize（v10.1 未选）**：用户曾考虑方案 C——旧短摘要条目只更新 summary/keyPoints，不重跑 classify/score，省 token、失败面更小。若 v10.1 重试仍偶发失败可再 AskQuestion 启用
+
+### **★ v10 P1 相关性 eval 后续（用户 query 语义，非 tech-filter）**
+
+1. **P2 · Pipeline 接入 `judgeRelevance`**：写 `mentionType` / `relevanceScore`；修复 `reference="direct"` 硬编码（D-049）
+2. **P3 · 列表过滤**：`sort=relevance` 时过滤 `hits=0` 或 judge.score < 阈值；ingest 后可选 AI 过滤低相关
+3. **golden 扩充 + 误报挖掘**：从线上误判复制到 golden.jsonl；`eval:relevance` 达标后再改 classify/summarize prompt
+4. **CI gate（可选）**：`RUN_AI_TESTS=1 && npm run eval:relevance` 准确率 < 75% 时 fail
 
 ### **★ v8 留下的尾巴 / publishedAt 后续可做的事**
 
@@ -1456,11 +1522,106 @@ testHotSpotDetailApi 加 1 项：source.publishedAt 透传断言
 
 ---
 
+## 24. v10 对话做的主要事 · 单条 AI + 相关性 P1 eval（commits `28966e7..62d106c`）
+
+> 用户原话 1：「一键 AI 处理时间太长，保持一键不变，增加单条 AI 处理。」
+>
+> 用户原话 2（含根因图）：相关性分析不准——搜索/Prompt/阈值/评估四层；建议 **AI 自建测试评估机制**（相关性是话术不是精确数）。
+
+### 任务 1（T1）：单条 AI 处理（commit `28966e7`）
+
+- `POST /api/process?ids=<cuid>`：复用 `processBatch({ scope: [id], limit: 1 })`；404/500 错误语义
+- `page.tsx`：`processOneItem` + 卡片底按钮；`processingItemId` 与批量 `phase` 互斥
+- `HotItemCard.tsx`：「AI 处理」按钮 + 处理中 spinner
+- `hotspot/[id]/page.tsx`：未处理空状态「AI 处理本条」
+- `e2e-test.ts`：多条 `ids` → 400
+- 审查修复：失败 toast 颜色、`isBusy` 含单条、单条 `loadAll({ silent: true })`
+
+### 任务 2（T2）：旧短摘要显示「生成长导读」（commit `23b310f`）
+
+- **新增** `src/lib/single-ai-action.ts`：`getSingleAiAction`（未处理 / summary<150）
+- 首页 + 详情 Hero 按钮；详情旧版提示改为「点击上方生成长导读」
+- **根因**：第一版只在 `!processedAt` 显示按钮，已 AI 但短摘要的条目（用户截图 Stanford 案例）看不到按钮
+
+### 任务 3（T3）：P1 相关性评估套件（commit `62d106c`）
+
+- `src/lib/ai/relevance-judge.ts` + `relevance-schemas.ts`：tier（direct/related/irrelevant）+ directMention + score
+- `src/lib/relevance-rules.ts`：与 `GET /api/hotspots?sort=relevance` 子串 hits 一致，报告对比
+- `scripts/relevance-eval/golden.jsonl`：**43 条**种子（含 said/paid 误命中、斯坦福 AI 分手信 vs query=DeepSeek）
+- `npm run eval:relevance`；`RUN_AI_TESTS=1` 跑 LLM；`--dry-run` 校验 golden
+- **明确不做**：不改 ingest、不接线上 API、不替换 tech-filter
+
+### v10 用户决策记录
+
+| 议题 | 用户选择 |
+|---|---|
+| 单条 vs 批量 | 保留一键批量；新增单条 API + UI |
+| 单条按钮（已处理短摘要） | legacy_only：summary<150 显示「生成长导读」 |
+| 详情按钮位置 | Hero 标题下 |
+| 相关性首期 | P1 仅离线 eval（golden + judge） |
+| eval 参照词 | 用户搜索框 `q`（非 tech-filter 宽口径） |
+| 开工确认 | 用 AskQuestion；commit/push 双确认 |
+
+### v10 与「相关性四层根因图」对照
+
+| 层级 | 现状 | v10 做了什么 | 下一步 |
+|---|---|---|---|
+| 搜索 | keywords OR 偏宽 | 未改 | P3 收紧 query / ingest 后过滤 |
+| Prompt | classify 无 directMention | judge prompt 有（仅 eval） | P2 并入 Pipeline |
+| 阈值 | relevance 排序无最低 hits | 报告对比规则基线 | P3 列表过滤 |
+| 评估 | 无 golden | **P1 golden 43 + eval 脚本** | 扩 golden、CI gate |
+
+---
+
+## 25. v10.1 对话做的主要事 · 「生成长导读」schema 修复（commit `d183e8e`）
+
+> 用户截图：详情页点「生成长导读」→ `AI 处理失败：No object generated: response did not match schema`（英文 Microsoft/Claude 成本类标题，旧版短摘要条目）。
+
+### 根因（代码盘点）
+
+| 链 | 高概率越界 |
+|---|---|
+| classify | `tags` 单条 **>12 字符**（英文短语）；`confidence` 写成 **95** 而非 0.95 |
+| summarize | `summary` **<80 字**；`keyPoints` **<3 条** 或单条 **>80 字** |
+| score | `reasoning` **>160 字符** |
+
+v9 抬高 `SummarySchema` 约束后，`generateObject` 一次不过即整链失败；原先无重试、API 不标步骤。
+
+### 实现（用户选方案 A）
+
+| 文件 | 作用 |
+|---|---|
+| `src/lib/ai/generate-with-retry.ts` | 包装 `generateObject`，失败最多 **3 次**，Zod 错误摘要写回 prompt |
+| `src/lib/ai/normalize-outputs.ts` | 成功后截断 tags/reasoning/summary；**补齐 keyPoints 至 3 条**；confidence 95→0.95 |
+| `src/lib/ai/pipeline-step-error.ts` | `PipelineStepError` + `formatPipelineStepError`（中文步骤名） |
+| `prompts/classify|summarize|score.ts` | 接入 retry + normalize + 各链 `repairHints` |
+| `pipeline.ts` | `runPipelineStep` 包装三链 |
+| `api/process/route.ts` | 单条失败返回 `step` + 可读 `detail` |
+| `scripts/e2e-test.ts` | `testAiNormalize` **+4 项**（88→**92**） |
+
+### v10.1 用户决策记录
+
+| 议题 | 用户选择 |
+|---|---|
+| 修复策略 | **方案 A**：重试 + 归一化 + 步骤错误（非仅放宽 schema） |
+| schema | **保持严格** min/max；不靠降低 `summary.min(80)` |
+| 错误 UX | API/前端展示 **失败步骤**（分类/长导读/评分） |
+| 未做 | 方案 C「生成长导读」只跑 summarize 单链 |
+
+### 验收
+
+1. 重启 `npm run dev`，对旧短摘要条目再点「生成长导读」
+2. 失败时应见 `失败步骤：长导读 — …`（或分类/评分）
+3. `npx tsx scripts/e2e-test.ts` 中 **AI-NORM** 组 4 项应 PASS
+
+---
+
 ## 20. 入口参考
 
 - 详细需求 → `docs/REQUIREMENTS.md`
 - 详细技术方案 + ADR → `docs/DESIGN.md`
-- 用户验收过的测试套件 → `scripts/e2e-test.ts`（**87 项**，通常 **85 PASS**；twitter 429 可忽略）
+- 用户验收过的测试套件 → `scripts/e2e-test.ts`（**92 项**，通常 **90 PASS**；twitter 429 可忽略）
+- **相关性离线评估** → `scripts/relevance-eval/` + `npm run eval:relevance`（见 README）
 - 本地诊断 → `scripts/debug-stats.ts` / `scripts/debug-scan.ts` / `scripts/debug-ai-smoke.ts`（不在 git）
 - 一次性清理 → `scripts/cleanup-non-tech.ts`（v5 新增，进 git，可重跑）
 - Git 规则 → `.cursor/rules/git-auto-push.mdc`
@@ -1471,6 +1632,12 @@ testHotSpotDetailApi 加 1 项：source.publishedAt 透传断言
 - **发布时间解析 → `src/lib/published-at.ts`（v8 新增，9 平台 metric→Date 统一）**
 - **原文摘录 / AI 喂料 → `src/lib/source-excerpt.ts`（v9 新增，过滤 + 多源收集）**
 - **长导读 prompt → `src/lib/ai/prompts/summarize.ts`（v9 · 200-500 字四段结构）**
-- 数据源加固历史 → §15（v2）+ §16（v3）+ §17（v4）+ §18（v5）+ §19（v6）+ §21（v7）+ §22（v8）+ §23（v9）
+- **generateObject 重试 → `src/lib/ai/generate-with-retry.ts`（v10.1）**
+- **LLM 输出归一化 → `src/lib/ai/normalize-outputs.ts`（v10.1）**
+- **Pipeline 步骤错误 → `src/lib/ai/pipeline-step-error.ts`（v10.1）**
+- **单条 AI 按钮逻辑 → `src/lib/single-ai-action.ts`（v10）**
+- **单条 AI API → `POST /api/process?ids=`（v10 · v10.1 失败带 step）**
+- **相关性 judge（离线）→ `src/lib/ai/relevance-judge.ts` + `scripts/relevance-eval/`（v10 P1）**
+- 数据源加固历史 → §15（v2）+ §16（v3）+ §17（v4）+ §18（v5）+ §19（v6）+ §21（v7）+ §22（v8）+ §23（v9）+ §24（v10）+ **§25（v10.1）**
 
-**祝下一个 AI 玩得愉快 · HEAD = `e6be06b`**
+**祝下一个 AI 玩得愉快 · HEAD = `d183e8e`**
