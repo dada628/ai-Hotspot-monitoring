@@ -43,6 +43,10 @@ export interface HotItemProps {
   hotness?: number;
   /** AI Pipeline 输出的爆发速度（分/小时），> 阈值时显示飙升徽章 */
   trendVelocity?: number | null;
+  /** 单条 AI 处理（仅未处理条目由父组件传入） */
+  onAiProcess?: () => void;
+  aiProcessing?: boolean;
+  aiDisabled?: boolean;
 }
 
 const SEVERITY_META = {
@@ -216,6 +220,9 @@ export function HotItemCard({
   reference,
   hotness,
   trendVelocity,
+  onAiProcess,
+  aiProcessing = false,
+  aiDisabled = false,
 }: HotItemProps) {
   const primary = sources[0];
   const primaryMetric = primary?.metric ?? {};
@@ -432,6 +439,28 @@ export function HotItemCard({
           )}
         </div>
         <div className="flex items-center gap-3 shrink-0">
+          {onAiProcess && (
+            <button
+              type="button"
+              disabled={aiDisabled || aiProcessing}
+              onClick={(e) => {
+                e.stopPropagation();
+                onAiProcess();
+              }}
+              className="inline-flex items-center gap-1 text-[#c4b5fd] hover:text-[#e9d5ff] disabled:opacity-50 disabled:pointer-events-none transition-colors"
+              title="仅对本条跑 AI 分类 / 长导读 / 评分（约 15–40 秒）"
+            >
+              {aiProcessing ? (
+                <>
+                  <SpinnerMiniIcon /> 处理中…
+                </>
+              ) : (
+                <>
+                  <SparkMiniIcon /> AI 处理
+                </>
+              )}
+            </button>
+          )}
           {primary?.url && (
             <a
               href={primary.url}
@@ -650,6 +679,32 @@ function SparkMiniIcon() {
   return (
     <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor">
       <path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z" />
+    </svg>
+  );
+}
+function SpinnerMiniIcon() {
+  return (
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 24 24"
+      fill="none"
+      className="animate-spin"
+    >
+      <circle
+        cx="12"
+        cy="12"
+        r="9"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeOpacity="0.25"
+      />
+      <path
+        d="M21 12a9 9 0 0 0-9-9"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }

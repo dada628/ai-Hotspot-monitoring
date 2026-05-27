@@ -82,6 +82,10 @@ export default function HotSpotDetailPage({
   const [loading, setLoading] = useState(true);
   const [relatedLoading, setRelatedLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [aiProcessing, setAiProcessing] = useState(false);
+  const [aiMessage, setAiMessage] = useState<string | null>(null);
+
+  const BEARER = "Bearer dev-cron-secret-please-replace-1234567890";
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -118,6 +122,39 @@ export default function HotSpotDetailPage({
     load();
     loadRelated();
   }, [load, loadRelated]);
+
+  const processOneItem = async () => {
+    if (aiProcessing) return;
+    setAiProcessing(true);
+    setAiMessage(null);
+    try {
+      const res = await fetch(`/api/process?ids=${encodeURIComponent(id)}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: BEARER,
+        },
+      });
+      const body = (await res.json()) as {
+        error?: string;
+        detail?: string;
+        ai?: { totalDurationMs: number };
+      };
+      if (!res.ok) {
+        throw new Error(body.detail || body.error || `HTTP ${res.status}`);
+      }
+      const secs = ((body.ai?.totalDurationMs ?? 0) / 1000).toFixed(1);
+      setAiMessage(`AI 处理完成 · 用时 ${secs}s`);
+      await load();
+      await loadRelated();
+    } catch (e) {
+      setAiMessage(
+        `AI 处理失败：${e instanceof Error ? e.message : String(e)}`,
+      );
+    } finally {
+      setAiProcessing(false);
+    }
+  };
 
   return (
     <main className="relative min-h-screen">
@@ -159,6 +196,9 @@ export default function HotSpotDetailPage({
             data={data}
             related={related}
             relatedLoading={relatedLoading}
+            onAiProcess={!data.processedAt ? processOneItem : undefined}
+            aiProcessing={aiProcessing}
+            aiMessage={aiMessage}
           />
         )}
       </div>
@@ -175,10 +215,16 @@ function DetailContent({
   data,
   related,
   relatedLoading,
+  onAiProcess,
+  aiProcessing = false,
+  aiMessage,
 }: {
   data: HotSpotDetail;
   related: RelatedResponse | null;
   relatedLoading: boolean;
+  onAiProcess?: () => void;
+  aiProcessing?: boolean;
+  aiMessage?: string | null;
 }) {
   const tags = parseJson<string[]>(data.tags, []);
   const keyPoints = parseJson<string[]>(data.keyPoints, []);
@@ -332,11 +378,39 @@ function DetailContent({
         </section>
       ) : (
         <section className="glass p-6 text-center">
-          <SparklesIcon className="text-[#67e8f9] opacity-60" />
+          <SparklesIcon className="text-[#67e8f9] opacity-60 mx-auto" />
           <div className="mt-2 text-sm text-[var(--color-text-muted)]">
-            尚未 AI 处理 · 回到首页点{" "}
-            <span className="text-[#a78bfa]">AI 处理</span> 触发
+            尚未 AI 处理 · 可在此单条生成长导读（约 15–40 秒）
           </div>
+          {onAiProcess && (
+            <button
+              type="button"
+              className="btn btn-primary mt-4 inline-flex items-center gap-2"
+              disabled={aiProcessing}
+              onClick={onAiProcess}
+            >
+              {aiProcessing ? (
+                <>
+                  <SpinnerIcon /> 处理中…
+                </>
+              ) : (
+                <>
+                  <SparklesIcon /> AI 处理本条
+                </>
+              )}
+            </button>
+          )}
+          {aiMessage && (
+            <p
+              className={`mt-3 text-xs ${
+                aiMessage.startsWith("AI 处理失败")
+                  ? "text-[var(--color-danger-bright)]"
+                  : "text-[#67e8f9]"
+              }`}
+            >
+              {aiMessage}
+            </p>
+          )}
         </section>
       )}
 
@@ -828,6 +902,32 @@ function SparklesIcon({ className = "" }: { className?: string }) {
     >
       <path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z" />
       <path d="M19 14L19.7 16.3L22 17L19.7 17.7L19 20L18.3 17.7L16 17L18.3 16.3L19 14Z" />
+    </svg>
+  );
+}
+function SpinnerIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      className="animate-spin"
+    >
+      <circle
+        cx="12"
+        cy="12"
+        r="9"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeOpacity="0.25"
+      />
+      <path
+        d="M21 12a9 9 0 0 0-9-9"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }

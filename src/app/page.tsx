@@ -142,11 +142,12 @@ export default function HomePage() {
   const [progress, setProgress] = useState<ProgressSnapshot | null>(null);
   const [showActionMenu, setShowActionMenu] = useState(false);
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
+  const [processingItemId, setProcessingItemId] = useState<string | null>(null);
 
   // 派生：保持向下兼容（其它 UI 仍使用 scanning/processing 两个布尔）
   const scanning = phase === "scanning";
   const processing = phase === "processing";
-  const isBusy = phase !== "idle";
+  const isBusy = phase !== "idle" || processingItemId !== null;
 
   const [sort, setSort] = useState("hotness");
   const [platform, setPlatform] = useState("all");
@@ -155,8 +156,8 @@ export default function HomePage() {
   const [time, setTime] = useState("all");
   const [keyword, setKeyword] = useState("");
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
+  const loadAll = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     try {
       const params = new URLSearchParams({
         platform,
@@ -177,7 +178,7 @@ export default function HomePage() {
         setItems(data.items);
       }
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }, [platform, severity, sort, time, cred, keyword]);
 
@@ -302,6 +303,46 @@ export default function HomePage() {
     }
   };
 
+  /** 单条 AI 处理（未处理条目；全局 busy 时禁用） */
+  const processOneItem = async (hotSpotId: string) => {
+    if (isBusy || processingItemId) return;
+    setProcessingItemId(hotSpotId);
+    try {
+      const res = await fetch(
+        `/api/process?ids=${encodeURIComponent(hotSpotId)}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: BEARER,
+          },
+        },
+      );
+      const data = (await res.json()) as AiProcessResponse & {
+        error?: string;
+        detail?: string;
+      };
+      if (!res.ok) {
+        throw new Error(
+          data.detail || data.error || `HTTP ${res.status}`,
+        );
+      }
+      setAiReport(
+        `单条 AI 完成 · ${(data.ai.totalDurationMs / 1000).toFixed(1)}s` +
+          (data.alerts.alertsCreated > 0
+            ? ` · 触发预警 ${data.alerts.alertsCreated} 条`
+            : ""),
+      );
+      await loadAll({ silent: true });
+    } catch (err) {
+      setAiReport(
+        `单条 AI 失败：${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      setProcessingItemId(null);
+    }
+  };
+
   /** 一键全套：先扫描，扫完直接接 AI 处理 */
   const triggerAll = async () => {
     if (isBusy) return;
@@ -399,7 +440,7 @@ export default function HomePage() {
 
   const scanIsOk =
     scanReport && !scanReport.startsWith("扫描失败");
-  const aiIsOk = aiReport && !aiReport.startsWith("AI 处理失败");
+  const aiIsOk = !!aiReport && !aiReport.includes("失败");
 
   return (
     <main className="relative min-h-screen">
@@ -794,6 +835,13 @@ export default function HomePage() {
                     credibility="trusted"
                     reference="direct"
                     hotness={hotness}
+                    onAiProcess={
+                      !item.processedAt
+                        ? () => processOneItem(item.id)
+                        : undefined
+                    }
+                    aiProcessing={processingItemId === item.id}
+                    aiDisabled={isBusy}
                   />
                 );
               })}

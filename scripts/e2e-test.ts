@@ -1221,6 +1221,21 @@ async function testProcessApiRouting() {
       ? pass(g, "非法 scope 应 400", "400 ✓")
       : fail(g, "非法 scope 应 400", `实际 ${badScope.status}`);
 
+    // 3b) 多条 ids → 400
+    const multiIds = await fetch(
+      `${BASE}/api/process?ids=id1,id2`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: CRON_BEARER,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+    multiIds.status === 400
+      ? pass(g, "多条 ids 应 400", "400 ✓")
+      : fail(g, "多条 ids 应 400", `实际 ${multiIds.status}`);
+
     // 4) OPENROUTER_API_KEY 状态报告（非测试，只是信息）
     hasOpenRouterKey()
       ? pass(g, "OPENROUTER_API_KEY 已配置", "✓")

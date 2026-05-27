@@ -7,8 +7,9 @@
  * 鉴权：Bearer ${CRON_SECRET}
  *
  * Query 参数：
+ *  - ids:      单条 HotSpot ID（逗号分隔，本期仅支持 1 个）；与 scope 互斥
  *  - limit:    一次处理多少条（默认 20，最大 50）
- *  - scope:    "unprocessed"（默认）/ "all"
+ *  - scope:    "unprocessed"（默认）/ "all"（无 ids 时生效）
  *  - window:   时间窗小时数，默认 48（仅 unprocessed/all 生效）
  *  - model:    覆盖默认模型 ID（如 z-ai/glm-4.5-air）
  *
@@ -46,8 +47,23 @@ export async function POST(req: Request) {
   const scopeParam = url.searchParams.get("scope") ?? "unprocessed";
   const windowHours = Number(url.searchParams.get("window")) || 48;
   const modelId = url.searchParams.get("model") ?? undefined;
+  const idsParam = url.searchParams.get("ids");
 
-  if (scopeParam !== "unprocessed" && scopeParam !== "all") {
+  const idList = idsParam
+    ? idsParam
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
+
+  if (idList.length > 0) {
+    if (idList.length > 1) {
+      return NextResponse.json(
+        { error: "ids 仅支持单条 HotSpot ID" },
+        { status: 400 },
+      );
+    }
+  } else if (scopeParam !== "unprocessed" && scopeParam !== "all") {
     return NextResponse.json(
       { error: "scope 只能是 unprocessed 或 all" },
       { status: 400 },
@@ -55,12 +71,31 @@ export async function POST(req: Request) {
   }
 
   try {
-    const summary = await processBatch({
-      limit,
-      scope: scopeParam as "unprocessed" | "all",
-      windowHours,
-      modelId,
-    });
+    const summary = await processBatch(
+      idList.length > 0
+        ? { limit: 1, scope: idList, modelId }
+        : {
+            limit,
+            scope: scopeParam as "unprocessed" | "all",
+            windowHours,
+            modelId,
+          },
+    );
+
+    if (idList.length > 0 && summary.scanned === 0) {
+      return NextResponse.json({ error: "HotSpot 不存在" }, { status: 404 });
+    }
+
+    if (idList.length > 0 && summary.succeeded === 0 && summary.failed > 0) {
+      const firstErr = summary.results.find((r) => r.status === "failed");
+      return NextResponse.json(
+        {
+          error: "单条 AI 处理失败",
+          detail: firstErr?.errorMsg ?? "未知错误",
+        },
+        { status: 500 },
+      );
+    }
 
     // 处理完跑订阅匹配
     const successIds = summary.results
