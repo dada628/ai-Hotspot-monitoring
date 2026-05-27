@@ -8,6 +8,7 @@ import { Badge } from "@/components/Badge";
 import { Spotlight } from "@/components/aceternity/Spotlight";
 import { BorderBeam } from "@/components/aceternity/BorderBeam";
 import { PLATFORM_META, type PlatformKey } from "@/lib/platforms";
+import { collectSourceExcerpts } from "@/lib/source-excerpt";
 
 interface HotSpotSource {
   id: string;
@@ -182,6 +183,13 @@ function DetailContent({
   const tags = parseJson<string[]>(data.tags, []);
   const keyPoints = parseJson<string[]>(data.keyPoints, []);
   const entities = parseJson<string[]>(data.entities, []);
+  const sourceExcerpts = collectSourceExcerpts(
+    data.sources.map((s) => ({
+      platform: s.platform,
+      rawTitle: s.rawTitle,
+      metric: s.metric,
+    })),
+  );
   const effectiveScore = data.score > 0 ? data.score : data.engagementScore;
   const severity = scoreToSeverity(effectiveScore);
   const aiProcessed = !!data.processedAt;
@@ -309,13 +317,18 @@ function DetailContent({
         </div>
       </section>
 
-      {/* ===== AI 摘要 ===== */}
+      {/* ===== AI 长导读（v9 · 200-500 字）===== */}
       {data.summary ? (
         <section className="glass p-6 md:p-7">
-          <SectionTitle icon={<SparklesIcon />} text="AI 摘要" />
-          <p className="mt-3 text-[15px] text-[var(--color-text)] leading-relaxed whitespace-pre-line">
+          <SectionTitle icon={<SparklesIcon />} text="AI 长导读" />
+          <p className="mt-3 text-[15px] text-[var(--color-text)] leading-[1.75] whitespace-pre-line">
             {data.summary}
           </p>
+          {data.summary.length < 150 && aiProcessed && (
+            <p className="mt-3 text-xs text-[var(--color-text-muted)] border-t border-[var(--color-line)] pt-3">
+              本条为旧版短摘要（AI 处理于 v9 之前）· 重新点首页「扫描+AI」可生成长导读
+            </p>
+          )}
         </section>
       ) : (
         <section className="glass p-6 text-center">
@@ -323,6 +336,45 @@ function DetailContent({
           <div className="mt-2 text-sm text-[var(--color-text-muted)]">
             尚未 AI 处理 · 回到首页点{" "}
             <span className="text-[#a78bfa]">AI 处理</span> 触发
+          </div>
+        </section>
+      )}
+
+      {/* ===== 原文摘录（v9 · 各源 RSS/描述，供与 AI 对照）===== */}
+      {sourceExcerpts.length > 0 && (
+        <section className="glass p-6 md:p-7">
+          <SectionTitle icon={<QuoteIcon />} text="原文摘录" />
+          <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+            来自各平台抓取时的原始描述，可与上方 AI 长导读交叉验证
+          </p>
+          <div className="mt-4 space-y-4">
+            {sourceExcerpts.map((item) => {
+              const plat = PLATFORM_META[item.platform as PlatformKey];
+              return (
+                <div
+                  key={`${item.platform}-${item.excerpt.slice(0, 40)}`}
+                  className="rounded-lg border border-[var(--color-line)] bg-[rgba(15,23,42,0.35)] p-4"
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <span
+                      className="text-[10px] font-bold px-1.5 py-0.5 rounded tabular-nums"
+                      style={{
+                        color: plat?.color ?? "#94a3b8",
+                        background: plat?.bgColor ?? "rgba(148,163,184,0.12)",
+                      }}
+                    >
+                      {plat?.shortLabel ?? item.platform.slice(0, 2).toUpperCase()}
+                    </span>
+                    <span className="text-xs font-medium text-[var(--color-text-muted)]">
+                      {plat?.label ?? item.platform}
+                    </span>
+                  </div>
+                  <p className="text-sm text-[var(--color-text-dim)] leading-relaxed">
+                    {item.excerpt}
+                  </p>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
@@ -899,6 +951,20 @@ function DotIcon() {
     </svg>
   );
 }
+function QuoteIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 10h4v8H4V10zm12 0h4v8h-4V10zM4 6c2-2 5-2 7 0M16 6c2-2 5-2 7 0"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function CalendarIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none">

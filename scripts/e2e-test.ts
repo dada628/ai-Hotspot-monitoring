@@ -36,6 +36,11 @@ import {
   pickEarliestPublishedAt,
 } from "../src/lib/published-at";
 import {
+  collectSourceExcerpts,
+  extractSourceExcerpt,
+  isUsefulExcerpt,
+} from "../src/lib/source-excerpt";
+import {
   ClassifySchema,
   ScoreSchema,
   SummarySchema,
@@ -452,6 +457,97 @@ async function testPublishedAt() {
     withPub > 0
       ? pass(g, "DB 含 publishedAt 数据", `${withPub} 条 HotSpot 已写入`)
       : fail(g, "DB 含 publishedAt 数据", "0 条 — 检查 ingest.ts 写入逻辑");
+  });
+}
+
+async function testSourceExcerpt() {
+  await group("SourceExcerpt · v9 原文素材", async () => {
+    const g = "SourceExcerpt";
+
+    // 1) 无效摘录过滤（InfoQ 占位符 / 过短）
+    const badCases = ["点击查看原文>", "短", "  ", ""];
+    const badOk = badCases.every((t) => !isUsefulExcerpt(t));
+    badOk
+      ? pass(g, "isUsefulExcerpt 拒绝占位符/过短", `${badCases.length} 条全拒绝`)
+      : fail(g, "isUsefulExcerpt 拒绝占位符/过短", "存在应拒绝的条目");
+
+    const goodOk = isUsefulExcerpt(
+      "Graphs that teach > graphs that impress. Turn any code into an interactive knowledge graph.",
+    );
+    goodOk
+      ? pass(g, "isUsefulExcerpt 接受有效英文描述", "OK")
+      : fail(g, "isUsefulExcerpt 接受有效英文描述", "误判为无效");
+
+    // 2) extractSourceExcerpt 字段优先级
+    const fromGh = extractSourceExcerpt({
+      description: "Learn it. Build it. Ship it for others.",
+      excerpt: "",
+    });
+    fromGh === "Learn it. Build it. Ship it for others."
+      ? pass(g, "extractSourceExcerpt 读 description", "OK")
+      : fail(g, "extractSourceExcerpt 读 description", String(fromGh));
+
+    const fromInfoq = extractSourceExcerpt({ excerpt: "点击查看原文>" });
+    fromInfoq === null
+      ? pass(g, "extractSourceExcerpt 过滤 InfoQ 占位符", "null")
+      : fail(g, "extractSourceExcerpt 过滤 InfoQ 占位符", String(fromInfoq));
+
+    // 3) collectSourceExcerpts 去重
+    const collected = collectSourceExcerpts([
+      {
+        platform: "github",
+        rawTitle: "foo/bar",
+        metric: { description: "Same text repeated for dedupe test here." },
+      },
+      {
+        platform: "googlenews",
+        rawTitle: "other",
+        metric: { excerpt: "Same text repeated for dedupe test here." },
+      },
+    ]);
+    collected.length === 1
+      ? pass(g, "collectSourceExcerpts 去重", "2 源同文 → 1 条")
+      : fail(g, "collectSourceExcerpts 去重", `得到 ${collected.length} 条`);
+
+    // 4) SummarySchema v9 长度约束
+    const shortSummary = SummarySchema.safeParse({
+      summary: "太短了。",
+      keyPoints: ["a", "b", "c"],
+      entities: ["X"],
+    });
+    !shortSummary.success
+      ? pass(g, "SummarySchema 拒绝 <80 字 summary", "rejected")
+      : fail(g, "SummarySchema 拒绝 <80 字 summary", "竟然通过");
+
+    const longOk = SummarySchema.safeParse({
+      summary:
+        "OpenAI 于本周发布新一代大模型，官方强调在代码与推理场景的性能提升，并调整 API 定价策略。此举被视为回应竞争对手近期密集迭代的信号。对开发者而言，上下文长度与工具调用稳定性是关键；企业用户则更关注合规与私有化部署选项。",
+      keyPoints: ["新模型发布", "API 定价调整", "竞争格局变化"],
+      entities: ["OpenAI"],
+    });
+    longOk.success
+      ? pass(g, "SummarySchema 接受 80+ 字长导读", "OK")
+      : fail(g, "SummarySchema 接受 80+ 字长导读", longOk.error?.message ?? "");
+
+    // 5) DB：googlenews 新 ingest 应含 excerpt 字段
+    const gnSample = await db.hotSpotSource.findFirst({
+      where: { platform: "googlenews", metric: { contains: '"excerpt"' } },
+      orderBy: { fetchedAt: "desc" },
+      select: { metric: true },
+    });
+    if (gnSample) {
+      try {
+        const m = JSON.parse(gnSample.metric) as Record<string, unknown>;
+        const ex = typeof m.excerpt === "string" ? m.excerpt : "";
+        ex.length >= 20 && isUsefulExcerpt(ex)
+          ? pass(g, "DB googlenews metric.excerpt 有效", `${ex.length} 字符`)
+          : fail(g, "DB googlenews metric.excerpt 有效", `excerpt="${ex}"`);
+      } catch {
+        fail(g, "DB googlenews metric.excerpt 有效", "metric JSON 解析失败");
+      }
+    } else {
+      fail(g, "DB googlenews metric.excerpt 有效", "无含 excerpt 的 googlenews 记录 — 先跑 ingest");
+    }
   });
 }
 
@@ -1047,8 +1143,9 @@ async function testAiPipelineStatic() {
       : fail(g, "ScoreSchema 解析合法对象", validScore.error.message);
 
     const validSummary = SummarySchema.safeParse({
-      summary: "OpenAI 发布了 GPT-6 模型，参数规模提升 5 倍。",
-      keyPoints: ["GPT-6 发布", "参数 5x"],
+      summary:
+        "OpenAI 发布 GPT-6 模型，官方称参数规模较上一代显著提升，并强化代码与多模态能力。发布被视为对齐主要竞争对手近期节奏。开发者关注 API 定价与上下文窗口；企业用户关注合规与私有化选项。",
+      keyPoints: ["GPT-6 发布", "参数规模提升", "API 与合规待观察"],
       entities: ["OpenAI", "GPT-6"],
     });
     validSummary.success
@@ -1224,6 +1321,7 @@ async function main() {
   await testTechFilter();
   await testKeywords();
   await testPublishedAt();
+  await testSourceExcerpt();
   await testScrapersIsolated();
   await testDatabaseIntegrity();
   await testAiPipelineStatic();
